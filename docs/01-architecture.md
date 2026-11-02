@@ -21,7 +21,7 @@ flowchart LR
 - **PostgreSQL (Cloud SQL)** stores everything the admin manages: settings, courses, batches, banners, announcements, gallery, videos, brochure metadata and exam questions.
 - **Firebase Storage** stores image files (public) and brochure PDFs (private; students get them only through the API after OTP).
 - **Google Sheets** receives one row per brochure download and per exam registration. Student lead details are not persisted in PostgreSQL; if Sheets is briefly unavailable, the row is held temporarily in the retry queue and Cloud Scheduler retries it every 5 minutes. The backend only "verifies" the tokens Firebase issues.
-- **Firebase Auth** handles the admin email/password login and the student phone OTP.
+- **Firebase Auth** handles the single administrator's Google Sign-In and the student phone OTP.
 - **Admin SPA** is served at `/admin` from this FastAPI service. It uses the
   Firebase Web SDK only to obtain an administrator's ID token; all data changes
   still go through the existing protected FastAPI APIs.
@@ -46,15 +46,15 @@ Tests live in `tests/modules/test_<name>.py`.
 | `site_settings` | n/a | `/site-settings` | `admin_auth` |
 | `courses` | n/a | `/courses` | `admin_auth` |
 | `batches` | n/a | `/batches` | `admin_auth`, `courses` |
-| `brochures` | n/a | `/brochures` | `admin_auth`, `courses` |
+| `brochures` | Disabled pending the verified `brochures` table | n/a | n/a |
 | `banners` | n/a | `/banners` | `admin_auth`, `courses` |
 | `announcements` | n/a | `/announcements` | `admin_auth` |
 | `gallery` | n/a | `/gallery` | `admin_auth` |
 | `videos` | n/a | `/videos` | `admin_auth` |
 | `registration` | n/a | `/registration/options` | n/a |
-| `lead_sync` | `/internal/lead-sync/flush` (scheduler only) | `/lead-sync` | `admin_auth` |
-| `brochure_download` | n/a | `/brochures/{course}/download` | `admin_auth`, `brochures`, `courses`, `lead_sync` |
-| `exam` | `/exam/info`, `/exam/start`, `/exam/submit` | `/exam` | `admin_auth`, `registration`, `lead_sync` |
+| `lead_sync` | Disabled pending the verified `pending_sheet_rows` table | n/a | n/a |
+| `brochure_download` | Disabled pending the verified `brochures` table | n/a | n/a |
+| `exam` | `/exam/info`, `/exam/start`, `/exam/submit` | `/exam` | `admin_auth`, `registration` |
 | `public_site` | `/public/site` | n/a | most content modules |
 
 Shared building blocks live in `app/core/`:
@@ -100,7 +100,7 @@ Each one has two implementations: a real one (Firebase, Google) and a fake one f
 
 Example: run the exam on its own Cloud Run service because it gets heavy traffic in admission season.
 
-1. Deploy the **same image** as a second service, say `college-exam`, with `ENABLED_MODULES=registration,lead_sync,exam,admin_auth` (copy `config/production.env.yaml` to a new file and change that line).
+1. Deploy the **same image** as a second service, say `college-exam`, with `ENABLED_MODULES=registration,exam,admin_auth` (copy `config/production.env.yaml` to a new file and change that line).
 2. Remove `exam` from `ENABLED_MODULES` of the main service (list the other modules).
 3. In the frontend's `firebase.json`, send exam traffic to the new service. Put it **before** the general rule:
 
@@ -118,5 +118,5 @@ Example: run the exam on its own Cloud Run service because it gets heavy traffic
 
 1. Create `app/modules/<name>/` with the five files above (copy a small module such as `videos`).
 2. Register it in `app/modules/__init__.py` (`ALL_MODULES`) and its module in `app/models.py`.
-3. Create a migration: `alembic revision --autogenerate -m "add <name>"`, review it, then `alembic upgrade head`.
+3. Create a migration: `alembic revision --autogenerate -m "add <name>"`, review it, then use the explicit branch target appropriate to that database; never use generic `head` with both branches present.
 4. Add `tests/modules/test_<name>.py`.

@@ -43,10 +43,11 @@ Locally everything Google-related is faked:
 - Files go to a Docker volume.
 - Google Sheets rows go to CSV files.
 
-Give the fake admin access once:
+Production has exactly one administrator. After the `admin_users` migration is
+applied, an operator registers the already-existing, verified Firebase account once:
 
 ```bash
-docker compose exec api python -m app.cli create-admin --email admin@college.com --name "College Admin"
+./scripts/run-cli.sh production grant-existing-admin --email admin@college.com --name "College Admin"
 ```
 
 Running without Docker, running the tests and more: [docs/02-local-development.md](docs/02-local-development.md).
@@ -76,10 +77,10 @@ app/
   core/                 shared code: config, database, errors, logging, storage, Google Sheets, security
   modules/              one folder per feature (routes, logic, database models)
     admin_auth/  site_settings/  courses/  batches/  brochures/  banners/
-    announcements/  gallery/  videos/  registration/  lead_sync/
+    announcements/  videos/  registration/
     brochure_download/  exam/  public_site/
   main.py               builds the FastAPI app from the enabled modules
-cli.py                  operator commands (create admin, flush Sheets queue, exam template, ...)
+cli.py                  operator commands (one-time admin registration, flush Sheets queue, exam template, ...)
 migrations/             Alembic database migrations
 db/schema.sql           the full schema as plain SQL (generated from the migrations)
 templates/              the Excel template for exam question sets
@@ -100,4 +101,4 @@ docs/                   the guides listed above
 | New database migration | `alembic revision --autogenerate -m "describe change"` |
 | Deploy to staging | Push to `main` (automatic), or `./scripts/deploy.sh staging` |
 | Deploy to production | GitHub → Actions → Deploy → Run workflow → "production", or `./scripts/deploy.sh production` |
-| Add an admin (cloud) | `./scripts/run-cli.sh production create-admin --email someone@college.com` |
+| Initialize the sole admin (once) | `./scripts/run-cli.sh production grant-existing-admin --email existing@example.com` |

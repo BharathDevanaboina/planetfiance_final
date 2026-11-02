@@ -30,9 +30,11 @@ def require_admin(
         raise Unauthorized("Missing admin sign-in.")
 
     identity = verifier.verify_admin_token(authorization.removeprefix("Bearer ").strip())
+    if identity.sign_in_provider != "google.com":
+        raise Forbidden("Administrator access requires Google Sign-In.", code="GOOGLE_SIGN_IN_REQUIRED")
     if not identity.email or not identity.email_verified:
         raise Forbidden("Your email address is not verified.", code="EMAIL_NOT_VERIFIED")
-    admin = service.get_active_admin(db, identity.email)
+    admin = service.get_active_admin(db, identity.uid, identity.email)
     if admin is None:
         raise Forbidden("This account does not have admin access.", code="NOT_AN_ADMIN")
 

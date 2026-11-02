@@ -6,15 +6,14 @@ All commands assume `gcloud config set project college-prod` (or staging) and `R
 
 | Task | How |
 |---|---|
-| Add an admin | `./scripts/run-cli.sh production create-admin --email person@college.com --name "Name"`. Temporary password is in the job logs ([details](04-firebase-setup.md#creating-the-admin-account)) |
-| Remove an admin | `./scripts/run-cli.sh production deactivate-admin --email person@college.com` |
+| Initialize the sole admin | Once only: `./scripts/run-cli.sh production grant-existing-admin --email existing-verified@example.com --name "Name"`. The command refuses if an `admin_users` record already exists and never creates or changes a Firebase user. |
 | List admins | `./scripts/run-cli.sh production list-admins` (output in job logs) |
-| Admin forgot password | **Forgot password** on the admin login page (Firebase sends a reset email) |
+| Admin password | Managed directly in Firebase Authentication; the application intentionally exposes no public reset flow. |
 | Replace an exam set | Admin portal → Exam sets → **Validate** the new file → **Delete** the old set → **Upload** into the empty slot. Students who started on the old set must start again |
 | Check an exam file offline | `python -m app.cli validate-exam-file my-set.xlsx` |
 | Get the Excel template | Admin portal, or `python -m app.cli generate-exam-template` |
 | Replace a brochure | Admin portal → Brochures → upload the new PDF for that course (the old file is deleted) |
-| Submissions stuck before Google Sheets | Admin portal → Sheets sync status, then **Retry now**. Or `./scripts/run-cli.sh production flush-lead-sync`. Then fix the cause ([Sheets setup](05-google-sheets-setup.md#4-test)) |
+| Exam registration cannot reach Google Sheets | The exam start is refused and the student can retry. A retry queue is unavailable until `pending_sheet_rows` is separately implemented. |
 
 ## Backups
 
@@ -168,12 +167,12 @@ Useful log searches (Logs Explorer):
 | Service won't start: "Invalid configuration for production" | The log line lists exactly which settings are missing or unsafe |
 | `/readyz` returns 503 | Database unreachable. Check the Cloud SQL instance is running, `CLOUD_SQL_CONNECTION_NAME` is right, the `college-api` service account has **Cloud SQL Client**, and the `college-db-password` secret matches |
 | Migration job fails | Cloud Run → Jobs → `college-migrate` → Logs. If the password changed, redeploy; the service is not changed until migrations succeed |
-| Admin gets "This account does not have admin access" | Email not in the allow-list. Run `create-admin` |
-| Admin gets "Your email address is not verified" | Run `create-admin` again; it marks the Firebase email verified |
+| Admin gets "This account does not have admin access" | The Firebase UID/email do not match the sole `admin_users` record. Do not add another account; inspect the existing registration through the approved recovery process. |
+| Admin gets "Your email address is not verified" | Verify the existing Firebase account's email. The registration command will not modify Firebase users. |
 | Students get "App verification failed" | App Check site key or domain mismatch. Check the reCAPTCHA key domains and the App Check registration ([Firebase setup, step 3](04-firebase-setup.md#3-app-check-blocks-bots-from-the-public-forms)) |
 | Students never receive the SMS | Domain missing from **Authorized domains**, SMS region policy not allowing India, or Firebase SMS quota reached (Authentication → Usage) |
 | "Your OTP verification has expired" | The student took more than 10 minutes between OTP and submit. They verify again. Adjust `OTP_MAX_AGE_SECONDS` if needed |
-| Rows missing in Google Sheets | Check `GET /api/v1/admin/lead-sync/status` and the logs ([Sheets setup](05-google-sheets-setup.md#4-test)) |
+| Rows missing in Google Sheets | Check the Sheets service account access and Cloud Run logs. Retry the student action after Sheets is available. |
 | "The mock exam is not available right now" | No exam set uploaded. Upload at least one |
 | Exam upload rejected | The response lists every problem with its row number. Fix the Excel file ([format](10-exam-question-format.md)) |
 | Website shows old content | The CDN caches the content for 60 seconds. Wait a minute |

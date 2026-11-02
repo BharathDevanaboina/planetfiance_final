@@ -13,7 +13,7 @@ Every deployment, whether automatic or by hand, runs
 `scripts/deploy.sh`, which:
 
 1.  Builds the container image and pushes it to Artifact Registry.
-2.  Runs the database migrations (`alembic upgrade head`) as the Cloud
+2.  Runs only the PlanetFiance existing-database migration target (`alembic upgrade planetfiance_existing@head`) as the Cloud
     Run job `college-migrate`.
 3.  Deploys the new image to the Cloud Run service `college-api`.
 4.  Calls `/api/v1/readyz`. If that fails, it **moves traffic back to
@@ -129,7 +129,7 @@ gcloud sql backups create --instance=college-db --description="before downgrade"
 gcloud run jobs execute college-migrate --region=asia-south1 --args=downgrade,-1 --wait
 ```
 
-The next normal deploy runs `upgrade head` again, so remove or fix the
+The next normal existing-database deploy runs `upgrade planetfiance_existing@head` again, so remove or fix the
 migration in Git first.
 
 ## 5. What is deployed where

@@ -18,33 +18,34 @@ def _db():
     return get_session_factory()()
 
 
-def cmd_create_admin(args: argparse.Namespace) -> int:
+def cmd_grant_existing_admin(args: argparse.Namespace) -> int:
+    """Initialize the sole allow-list entry from a verified Firebase user."""
+    if get_settings().auth_mode != "firebase":
+        raise RuntimeError("grant-existing-admin requires AUTH_MODE=firebase.")
+
+    # Initialises Firebase Admin using the runtime identity, then performs a
+    # read-only lookup.  No Firebase user is created, updated or reset here.
     from app.core.dependencies import get_identity_verifier
+
+    get_identity_verifier()
+    from firebase_admin import auth
+
     from app.modules.admin_auth import service
 
+    firebase_user = auth.get_user_by_email(args.email)
+    if not firebase_user.email_verified:
+        raise ValueError("The Firebase account email must be verified before admin access is granted.")
+    if not any(provider.provider_id == "google.com" for provider in firebase_user.provider_data):
+        raise ValueError("The Firebase account must be an existing Google Sign-In account.")
     with _db() as db:
-        admin = service.create_admin(db, args.email, args.name)
-    print(f"Admin access granted to {admin.email}.")
-    if get_settings().auth_mode == "firebase" and not args.skip_firebase:
-        temporary_password = get_identity_verifier().ensure_admin_account(admin.email, args.name)
-        if temporary_password:
-            print("A Firebase sign-in account was created with this TEMPORARY password:")
-            print(f"  {temporary_password}")
-            print("Give it to the admin privately; they should change it after the first sign-in")
-            print("(or use 'Forgot password' on the admin login page).")
-        else:
-            print("The existing Firebase account was found and its email is marked as verified.")
-    print("Next: the admin signs in at /admin and changes the temporary password.")
+        admin = service.initialize_admin(
+            db,
+            firebase_user.uid,
+            firebase_user.email or args.email,
+            args.name or firebase_user.display_name,
+        )
+    print(f"The sole admin was registered: {admin.email} (Firebase UID verified server-side).")
     return 0
-
-
-def cmd_deactivate_admin(args: argparse.Namespace) -> int:
-    from app.modules.admin_auth import service
-
-    with _db() as db:
-        ok = service.deactivate_admin(db, args.email)
-    print("Admin access removed." if ok else "No admin with that email.")
-    return 0 if ok else 1
 
 
 def cmd_list_admins(_: argparse.Namespace) -> int:
@@ -54,16 +55,6 @@ def cmd_list_admins(_: argparse.Namespace) -> int:
         for admin in service.list_admins(db):
             state = "active" if admin.is_active else "inactive"
             print(f"{admin.email:40} {state:9} last login: {admin.last_login_at}")
-    return 0
-
-
-def cmd_flush_lead_sync(_: argparse.Namespace) -> int:
-    from app.core.dependencies import get_sheets
-    from app.modules.lead_sync import service
-
-    with _db() as db:
-        result = service.flush(db, get_sheets())
-    print(result.model_dump_json())
     return 0
 
 
@@ -101,25 +92,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("create-admin", help="Give an email address admin access")
+    p = sub.add_parser(
+        "grant-existing-admin",
+        help="One-time registration of an existing verified Firebase administrator",
+    )
     p.add_argument("--email", required=True)
     p.add_argument("--name")
-    p.add_argument(
-        "--skip-firebase",
-        action="store_true",
-        help="Only update the allow-list, not Firebase Auth",
-    )
-    p.set_defaults(func=cmd_create_admin)
-
-    p = sub.add_parser("deactivate-admin", help="Remove admin access")
-    p.add_argument("--email", required=True)
-    p.set_defaults(func=cmd_deactivate_admin)
+    p.set_defaults(func=cmd_grant_existing_admin)
 
     sub.add_parser("list-admins", help="List admin accounts").set_defaults(func=cmd_list_admins)
-    sub.add_parser("flush-lead-sync", help="Retry submissions waiting for Google Sheets").set_defaults(
-        func=cmd_flush_lead_sync
-    )
-
     p = sub.add_parser("generate-exam-template", help="Write the Excel template for question sets")
     p.add_argument("--output", default="templates/exam-question-set-template.xlsx")
     p.set_defaults(func=cmd_generate_exam_template)

@@ -50,7 +50,7 @@ class PassageSnap:
 
 @dataclass(frozen=True)
 class SetSnapshot:
-    id: uuid.UUID
+    slot: int
     slot: int
     name: str
     questions: dict[uuid.UUID, QuestionSnap]
@@ -60,22 +60,22 @@ class SetSnapshot:
         return sorted(self.questions.values(), key=lambda q: (q.section, q.position))
 
 
-_cache: dict[uuid.UUID, SetSnapshot] = {}
+_cache: dict[int, SetSnapshot] = {}
 _lock = threading.Lock()
 
 
-def load_snapshot(db: Session, set_id: uuid.UUID) -> SetSnapshot | None:
+def load_snapshot(db: Session, set_slot: int) -> SetSnapshot | None:
     with _lock:
-        cached = _cache.get(set_id)
+        cached = _cache.get(set_slot)
     if cached:
         return cached
 
-    exam_set = db.get(ExamSet, set_id)
+    exam_set = db.get(ExamSet, set_slot)
     if exam_set is None:
         return None
 
-    questions = list(db.scalars(select(ExamQuestion).where(ExamQuestion.exam_set_id == set_id)))
-    passages = list(db.scalars(select(ExamPassage).where(ExamPassage.exam_set_id == set_id)))
+    questions = list(db.scalars(select(ExamQuestion).where(ExamQuestion.exam_set_slot == set_slot)))
+    passages = list(db.scalars(select(ExamPassage).where(ExamPassage.exam_set_slot == set_slot)))
 
     q_snaps = {
         q.id: QuestionSnap(
@@ -102,17 +102,17 @@ def load_snapshot(db: Session, set_id: uuid.UUID) -> SetSnapshot | None:
         for p in passages
     }
 
-    snapshot = SetSnapshot(exam_set.id, exam_set.slot, exam_set.name, q_snaps, p_snaps)
+    snapshot = SetSnapshot(exam_set.slot, exam_set.name, q_snaps, p_snaps)
     with _lock:
         if len(_cache) > 10:
             _cache.clear()
-        _cache[set_id] = snapshot
+        _cache[set_slot] = snapshot
     return snapshot
 
 
-def evict(set_id: uuid.UUID) -> None:
+def evict(set_slot: int) -> None:
     with _lock:
-        _cache.pop(set_id, None)
+        _cache.pop(set_slot, None)
 
 
 def _question_payload(q: QuestionSnap, number: int, rng: random.Random) -> dict:

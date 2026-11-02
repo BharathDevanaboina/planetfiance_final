@@ -7,12 +7,8 @@ from app.modules.admin_auth import module as admin_auth_module
 from app.modules.announcements import module as announcements_module
 from app.modules.banners import module as banners_module
 from app.modules.batches import module as batches_module
-from app.modules.brochure_download import module as brochure_download_module
-from app.modules.brochures import module as brochures_module
 from app.modules.courses import module as courses_module
 from app.modules.exam import module as exam_module
-from app.modules.gallery import module as gallery_module
-from app.modules.lead_sync import module as lead_sync_module
 from app.modules.public_site import module as public_site_module
 from app.modules.registration import module as registration_module
 from app.modules.site_settings import module as site_settings_module
@@ -25,15 +21,11 @@ ALL_MODULES: tuple[Module, ...] = (
     registration_module,
     site_settings_module,
     courses_module,
-    lead_sync_module,
     announcements_module,
     banners_module,
     batches_module,
-    brochures_module,
-    gallery_module,
     videos_module,
     exam_module,
-    brochure_download_module,
     public_site_module,
 )
 

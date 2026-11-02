@@ -9,10 +9,9 @@ from app.modules import ALL_MODULES, select_modules
 
 def test_module_registry_selects_existing_modules_and_validates_dependencies() -> None:
     assert select_modules("all") == ALL_MODULES
-    assert [module.name for module in select_modules("admin_auth,registration,lead_sync,exam")] == [
+    assert [module.name for module in select_modules("admin_auth,registration,exam")] == [
         "admin_auth",
         "registration",
-        "lead_sync",
         "exam",
     ]
 
@@ -42,7 +41,9 @@ def test_admin_spa_and_public_firebase_config_are_served(tmp_path: Path) -> None
 
     app_script = client.get("/admin/app.js")
     assert app_script.status_code == 200
-    assert "signInWithEmailAndPassword" in app_script.text
+    assert "signInWithPopup" in app_script.text
+    assert "GoogleAuthProvider" in app_script.text
+    assert "signInWithEmailAndPassword" not in app_script.text
     assert "TotpMultiFactorGenerator" not in app_script.text
     assert "auth/configuration-not-found" in app_script.text
 

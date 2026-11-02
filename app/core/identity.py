@@ -26,6 +26,7 @@ class AdminIdentity:
     uid: str
     email: str
     email_verified: bool
+    sign_in_provider: str
     mfa_verified: bool
 
 
@@ -45,14 +46,6 @@ class IdentityVerifier(Protocol):
     def verify_app_check(self, token: str) -> None: ...
 
     def delete_user(self, uid: str) -> None: ...
-
-    def ensure_admin_account(self, email: str, display_name: str | None) -> str | None:
-        """Ensure a Firebase user exists with a verified email.
-
-        Returns a temporary password when a new user was created,
-        otherwise None.
-        """
-        ...
 
 
 class FirebaseIdentityVerifier:
@@ -116,6 +109,7 @@ class FirebaseIdentityVerifier:
             uid=claims["uid"],
             email=(claims.get("email") or "").lower(),
             email_verified=bool(claims.get("email_verified")),
+            sign_in_provider=str(firebase_claims.get("sign_in_provider") or ""),
             mfa_verified=bool(firebase_claims.get("sign_in_second_factor")),
         )
 
@@ -155,36 +149,6 @@ class FirebaseIdentityVerifier:
                 exc_info=True,
             )
 
-    def ensure_admin_account(
-        self,
-        email: str,
-        display_name: str | None,
-    ) -> str | None:
-        import secrets
-
-        from firebase_admin import auth
-
-        try:
-            user = auth.get_user_by_email(email, app=self._app)
-        except auth.UserNotFoundError:
-            temporary_password = secrets.token_urlsafe(12)
-            auth.create_user(
-                email=email,
-                email_verified=True,
-                password=temporary_password,
-                display_name=display_name or None,
-                app=self._app,
-            )
-            return temporary_password
-
-        if not user.email_verified:
-            auth.update_user(
-                user.uid,
-                email_verified=True,
-                app=self._app,
-            )
-        return None
-
 
 class FakeIdentityVerifier:
     """Accepts predictable tokens. Never allowed in staging or production."""
@@ -204,6 +168,7 @@ class FakeIdentityVerifier:
             uid=f"uid-{email}",
             email=email,
             email_verified=True,
+            sign_in_provider="google.com",
             mfa_verified="mfa" in parts[2:],
         )
 
@@ -231,10 +196,3 @@ class FakeIdentityVerifier:
 
     def delete_user(self, uid: str) -> None:
         self.deleted_users.append(uid)
-
-    def ensure_admin_account(
-        self,
-        email: str,
-        display_name: str | None,
-    ) -> str | None:
-        return None

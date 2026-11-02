@@ -7,7 +7,7 @@ from app.core.models import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
 class Video(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    __tablename__ = "videos"
+    __tablename__ = "video"
 
     title: Mapped[str] = mapped_column(String(150), nullable=False)
     url: Mapped[str] = mapped_column(String(500), nullable=False)

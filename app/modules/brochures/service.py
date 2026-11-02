@@ -15,16 +15,21 @@ from app.modules.brochures.schemas import BrochureStatus
 from app.modules.courses import service as courses
 
 
-def _find(db: Session, course_id: uuid.UUID) -> Brochure | None:
-    return db.scalar(select(Brochure).where(Brochure.course_id == course_id))
+def _find(db: Session, course_code: str) -> Brochure | None:
+    return db.scalar(select(Brochure).where(Brochure.course_code == course_code))
+
+
+def course_codes_with_brochure(db: Session) -> set[str]:
+    """Return brochure-linked course codes when the optional metadata table exists."""
+    return set(db.scalars(select(Brochure.course_code)))
 
 
 def list_status(db: Session) -> list[BrochureStatus]:
-    by_course = {b.course_id: b for b in db.scalars(select(Brochure)).unique()}
+    by_course = {b.course_code: b for b in db.scalars(select(Brochure)).unique()}
     result: list[BrochureStatus] = []
 
     for course in courses.list_courses(db):
-        brochure = by_course.get(course.id)
+        brochure = by_course.get(course.code)
         result.append(
             BrochureStatus(
                 course_code=course.code,
@@ -51,7 +56,7 @@ def upload_brochure(
     path = f"private/brochures/{course.code}/{uuid.uuid4().hex}.pdf"
     storage.save_private(path, data, "application/pdf")
 
-    existing = _find(db, course.id)
+    existing = _find(db, course.code)
     old_path = existing.file_path if existing else None
 
     if existing:
@@ -61,7 +66,7 @@ def upload_brochure(
     else:
         db.add(
             Brochure(
-                course_id=course.id,
+                course_code=course.code,
                 file_path=path,
                 original_filename=filename[:255],
                 size_bytes=len(data),
@@ -83,7 +88,7 @@ def upload_brochure(
 
 def delete_brochure(db: Session, storage: FileStorage, code: str) -> None:
     course = courses.get_course(db, code)
-    existing = _find(db, course.id)
+    existing = _find(db, course.code)
     if existing is None:
         raise NotFound("This course has no brochure.", code="BROCHURE_NOT_FOUND")
 
@@ -105,7 +110,7 @@ def read_brochure(
 ) -> tuple[bytes, str, str]:
     """Return (PDF bytes, download filename, course name)."""
     course = courses.get_course(db, code)
-    existing = _find(db, course.id)
+    existing = _find(db, course.code)
     if existing is None:
         raise NotFound(
             "The brochure for this course is not available yet.",

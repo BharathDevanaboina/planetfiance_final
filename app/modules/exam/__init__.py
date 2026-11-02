@@ -8,5 +8,5 @@ module = Module(
     description="Exam set management (Excel upload) and the student exam flow. No results are stored.",
     public_router=public_router,
     admin_router=admin_router,
-    depends_on=("admin_auth", "registration", "lead_sync"),
+    depends_on=("admin_auth", "registration"),
 )

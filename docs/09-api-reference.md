@@ -333,30 +333,34 @@ Use `review` with the saved paper to show each question with the student's choic
 | `GET`, `PUT /site-settings` | Contact details and links (PUT replaces all fields) |
 | `GET /courses`, `GET /courses/{code}`, `PATCH /courses/{code}` | Course details and fees. `fee_breakup` must add up to `total_fee_inr` (send `[]` to show the total only) |
 | `GET /batches?course=PGDM`, `POST /batches`, `PATCH /batches/{id}`, `DELETE /batches/{id}` | Batches: `course_code`, `start_date`, `end_date`, `timings`, `mode` (`online` or `offline`), `is_active` |
-| `GET /brochures`, `PUT /brochures/{code}` (multipart `file`), `GET /brochures/{code}/file`, `DELETE /brochures/{code}` | One PDF per course |
+| Brochure management | Unavailable until the approved `brochures` metadata schema exists |
 | `GET /banners`, `POST /banners` (multipart: `title`, `course_code`?, `display_order`, `is_active`, `image`), `PATCH /banners/{id}`, `PUT /banners/{id}/image`, `DELETE /banners/{id}` | Banners. `course_code: null` removes the brochure button |
 | `GET /announcements`, `POST`, `PUT /announcements/{id}`, `DELETE /announcements/{id}` | `message`, `link_url`, `starts_at`, `ends_at`, `display_order`, `is_active` |
-| `GET /gallery`, `POST /gallery` (multipart: `image`, `caption`?, `display_order`), `PATCH /gallery/{id}`, `DELETE /gallery/{id}` | Gallery |
+| Gallery management | Unavailable until the approved `gallery_images` metadata schema exists |
 | `GET /videos`, `POST /videos` (multipart: `title`, `url` (YouTube, Shorts or Instagram Reel), `display_order`, `is_active`), `PATCH /videos/{id}`, `DELETE /videos/{id}` | Videos |
 | `GET /exam/sets` | The 3 slots and what's in them |
 | `GET /exam/template` | Download the Excel template |
 | `POST /exam/sets/validate` (multipart `file`) | Check a file without saving it. Returns counts, errors and warnings |
 | `POST /exam/sets/{slot}` (multipart `file`, `name`?) | Upload into an empty slot (1–3). On problems: 422 with `report.errors` (row numbers) |
 | `DELETE /exam/sets/{slot}` | Empty a slot |
-| `GET /lead-sync/status`, `POST /lead-sync/flush` | Submissions waiting for Google Sheets, and "retry now" |
+| Lead retry dashboard | Unavailable until the approved `pending_sheet_rows` schema exists |
 
 **Images:** JPEG, PNG or WebP, up to 10 MB, are converted to WebP in two sizes: `image_url` (max 1920 px wide) and `thumb_url` (max 600 px).
 
-## Admin sign-in with email and password (frontend outline)
+## Admin Google Sign-In (frontend outline)
 
 ```js
 import {
   getAuth,
-  signInWithEmailAndPassword
+  GoogleAuthProvider,
+  signInWithPopup
 } from "firebase/auth";
 
-await signInWithEmailAndPassword(auth, email, password);
+await signInWithPopup(auth, new GoogleAuthProvider());
 ```
+
+The backend accepts the Firebase ID token only when its provider is `google.com`,
+the email is verified, and its UID/email match the one active `admin_users` row.
 
 ## Limits
 

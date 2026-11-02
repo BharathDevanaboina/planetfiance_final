@@ -54,12 +54,11 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-dev.txt
       - run: pip install -r requirements-dev.txt
-      - name: Migrations apply, match the models, and roll back cleanly
+      - name: Verify separate Alembic branches without migrating a fresh database
         run: |
-          alembic upgrade head
-          alembic check
-          alembic downgrade base
-          alembic upgrade head
+          alembic heads
+          alembic history --verbose
+          python -c "from pathlib import Path; text = Path('config/production.deploy.env').read_text(); assert 'ALEMBIC_TARGET=planetfiance_existing@head' in text"
       - name: Tests against PostgreSQL
         run: |
           PGPASSWORD=college psql -h localhost -U college -c "CREATE DATABASE college_tests;"

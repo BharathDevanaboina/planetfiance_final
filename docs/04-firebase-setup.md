@@ -14,7 +14,7 @@ The Firebase project and the Google Cloud project are the same project.
 
 1. Firebase Console → **Authentication** → **Get started**.
 2. **Sign-in method:**
-   - Enable **Email/Password**. This is for the admin. Leave **Email link** off.
+   - Enable **Google**. This is the only administrator sign-in provider. Do not enable Email/Password or Email link for the admin portal.
    - Enable **Phone**. This is for student OTP.
 3. **Authorized domains** (Settings → Authorized domains): add the website domains, e.g. `college.com` and `www.college.com`. Phone sign-in only works on these domains.
 4. **SMS region policy** (Settings → SMS region policy): choose **Allow** and select **India** only. This blocks SMS fraud to foreign numbers.
@@ -25,26 +25,26 @@ The Firebase project and the Google Cloud project are the same project.
 After the backend is deployed ([Deployment](07-deployment.md)), run:
 
 ```bash
-./scripts/run-cli.sh production create-admin --email admin@college.com --name "College Admin"
+./scripts/run-cli.sh production grant-existing-admin --email admin@college.com --name "College Admin"
 ```
 
-This does two things:
+Before running it, ensure the intended administrator has already completed Google
+Sign-In in Firebase Authentication and that their Google email is verified. The
+command then does only this:
 
-- It adds the email to the backend's **admin allow-list**. Only allow-listed emails get admin access, even if someone else creates a Firebase account.
-- It creates the **Firebase sign-in account**, with email marked verified, and prints a **temporary password**. Look in the job's logs: Cloud Console → Cloud Run → Jobs → `college-cli` → Logs. If the account already exists, the command only adds the email to the allow-list.
+- Reads the existing Firebase account and requires its email to already be verified.
+- Creates the sole backend **admin allow-list** record. It refuses if any `admin_users` record already exists.
+
+It never creates, verifies, resets, disables, or otherwise changes a Firebase user.
 
 Then:
 
-1. Sign in on the admin portal with the temporary password and change it. Firebase **Forgot password** also works.
-2. Sign in to the admin portal with that email and password.
+1. The administrator signs in with Google. The application has no password form or public password-reset flow.
+2. Sign in to the admin portal with that registered Google account.
 
-To remove access:
-
-```bash
-./scripts/run-cli.sh production deactivate-admin --email admin@college.com
-```
-
-To also block the Firebase account: Firebase Console → Authentication → Users → **Disable account**.
+There is no normal deactivation, replacement, or password-reset command: this
+is a one-admin system. Handle a lost-account incident through an approved
+security recovery procedure, not from the dashboard or a public API.
 
 ## 3. App Check (blocks bots from the public forms)
 

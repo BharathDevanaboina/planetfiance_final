@@ -23,6 +23,11 @@ set -a
 source "$DEPLOY_FILE"
 set +a
 
+if [[ -z "${ALEMBIC_TARGET:-}" ]]; then
+  echo "ERROR: $DEPLOY_FILE must set ALEMBIC_TARGET to an explicit Alembic revision or branch head." >&2
+  exit 1
+fi
+
 if grep -q "REPLACE_ME" "$ENV_FILE"; then
   echo "ERROR: $ENV_FILE still contains REPLACE_ME values. Fill them in first (docs/03-configuration.md)." >&2
   exit 1
@@ -37,12 +42,12 @@ gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 docker build --platform linux/amd64 -t "$IMAGE" .
 docker push "$IMAGE"
 
-echo "==> [2/5] Running database migrations (Cloud Run job $MIGRATE_JOB_NAME)"
+echo "==> [2/5] Running Alembic target $ALEMBIC_TARGET (Cloud Run job $MIGRATE_JOB_NAME)"
 "${GCLOUD[@]}" run jobs deploy "$MIGRATE_JOB_NAME" --region "$REGION" --image "$IMAGE" \
   --service-account "$RUNTIME_SERVICE_ACCOUNT" \
   --set-cloudsql-instances "$CLOUD_SQL_INSTANCE" \
   --env-vars-file "$ENV_FILE" --set-secrets "$SECRETS" \
-  --command alembic --args upgrade,head \
+  --command alembic --args upgrade,"$ALEMBIC_TARGET" \
   --max-retries 0 --task-timeout 600
 "${GCLOUD[@]}" run jobs execute "$MIGRATE_JOB_NAME" --region "$REGION" --wait
 

@@ -9,7 +9,7 @@ from app.core.models import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
 class Announcement(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    __tablename__ = "announcements"
+    __tablename__ = "announcement"
 
     message: Mapped[str] = mapped_column(String(500), nullable=False)
     link_url: Mapped[str | None] = mapped_column(String(500))

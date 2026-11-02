@@ -98,7 +98,7 @@ Read only by `scripts/deploy.sh` and `scripts/run-cli.sh`:
 |---|---|
 | `PROJECT_ID`, `REGION` | Google Cloud project and region (`asia-south1` = Mumbai) |
 | `SERVICE_NAME` | Cloud Run service name (`college-api`) |
-| `MIGRATE_JOB_NAME` | Cloud Run job that runs `alembic upgrade head` before each deploy |
+| `MIGRATE_JOB_NAME` | Cloud Run job that runs the explicit `planetfiance_existing@head` target before each existing-database deploy |
 | `ARTIFACT_REPOSITORY`, `IMAGE_NAME` | Where container images are stored |
 | `RUNTIME_SERVICE_ACCOUNT` | Identity the service runs as (`college-api@...`) |
 | `CLOUD_SQL_INSTANCE` | `PROJECT:REGION:INSTANCE` |

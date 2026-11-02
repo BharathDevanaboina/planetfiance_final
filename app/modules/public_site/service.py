@@ -7,16 +7,13 @@ from app.core.timeutil import utc_now
 from app.modules.announcements import service as announcements
 from app.modules.banners import service as banners
 from app.modules.batches import service as batches
-from app.modules.brochures import service as brochures
 from app.modules.courses import service as courses
 from app.modules.exam import service as exam
-from app.modules.gallery import service as gallery
 from app.modules.public_site.schemas import (
     PublicAnnouncement,
     PublicBanner,
     PublicBatch,
     PublicCourse,
-    PublicGalleryImage,
     PublicSite,
     PublicVideo,
 )
@@ -25,12 +22,11 @@ from app.modules.videos import service as videos
 
 
 def build_site(db: Session, settings: Settings) -> PublicSite:
-    with_brochure = brochures.course_ids_with_brochure(db)
     active_courses = courses.list_courses(db, active_only=True)
     batches_by_course: dict = {}
 
     for b in batches.list_public_batches(db):
-        batches_by_course.setdefault(b.course_id, []).append(
+        batches_by_course.setdefault(b.course_code, []).append(
             PublicBatch(
                 id=b.id,
                 start_date=b.start_date,
@@ -58,8 +54,10 @@ def build_site(db: Session, settings: Settings) -> PublicSite:
                         "fee_breakup",
                     }
                 ),
-                has_brochure=c.id in with_brochure,
-                batches=batches_by_course.get(c.id, []),
+                # Brochure metadata is intentionally unavailable until its
+                # separate legacy table has an approved schema migration.
+                has_brochure=False,
+                batches=batches_by_course.get(c.code, []),
             )
         )
 
@@ -71,7 +69,7 @@ def build_site(db: Session, settings: Settings) -> PublicSite:
             thumb_url=b.thumb_url,
             image_width=b.image_width,
             image_height=b.image_height,
-            brochure_course_code=(b.course.code if b.course and b.course_id in with_brochure else None),
+            brochure_course_code=None,
         )
         for b in banners.list_banners(db, active_only=True)
     ]
@@ -84,17 +82,8 @@ def build_site(db: Session, settings: Settings) -> PublicSite:
             for a in announcements.list_public(db)
         ],
         courses=course_items,
-        gallery=[
-            PublicGalleryImage(
-                id=g.id,
-                caption=g.caption,
-                image_url=g.image_url,
-                thumb_url=g.thumb_url,
-                image_width=g.image_width,
-                image_height=g.image_height,
-            )
-            for g in gallery.list_images(db, active_only=True)
-        ],
+        # Gallery metadata is not in the verified PlanetFiance schema yet.
+        gallery=[],
         videos=[
             PublicVideo(
                 id=v.id,

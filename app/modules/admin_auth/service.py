@@ -9,14 +9,15 @@ from app.core.timeutil import utc_now
 from app.modules.admin_auth.models import AdminUser
 
 
-def get_active_admin(db: Session, email: str) -> AdminUser | None:
-    """Return an active admin whose email matches, ignoring case."""
+def get_active_admin(db: Session, firebase_uid: str, email: str) -> AdminUser | None:
+    """Return an active admin only when immutable UID and verified email match."""
     normalized_email = email.strip().lower()
-    if not normalized_email:
+    if not normalized_email or not firebase_uid:
         return None
 
     return db.scalar(
         select(AdminUser).where(
+            AdminUser.firebase_uid == firebase_uid,
             AdminUser.email == normalized_email,
             AdminUser.is_active.is_(True),
         )
@@ -37,41 +38,31 @@ def record_login(db: Session, admin: AdminUser) -> None:
         db.commit()
 
 
-def create_admin(
+def initialize_admin(
     db: Session,
+    firebase_uid: str,
     email: str,
     full_name: str | None = None,
 ) -> AdminUser:
-    """Create an admin, or reactivate/update an existing account."""
+    """Create the one allowed administrator exactly once.
+
+    The database's unique singleton key is the final concurrency guard.  The
+    explicit query gives operators a clear, fail-closed message on later runs.
+    """
     normalized_email = email.strip().lower()
     if not normalized_email:
         raise ValueError("Email must not be empty.")
 
-    admin = db.scalar(select(AdminUser).where(AdminUser.email == normalized_email))
+    if not firebase_uid:
+        raise ValueError("Firebase UID must not be empty.")
 
-    if admin:
-        admin.is_active = True
-        if full_name:
-            admin.full_name = full_name
-    else:
-        admin = AdminUser(email=normalized_email, full_name=full_name)
-        db.add(admin)
+    if db.scalar(select(AdminUser.id).limit(1)) is not None:
+        raise ValueError("The sole administrator is already registered; additional admins are not permitted.")
 
+    admin = AdminUser(firebase_uid=firebase_uid, email=normalized_email, full_name=full_name)
+    db.add(admin)
     db.commit()
     return admin
-
-
-def deactivate_admin(db: Session, email: str) -> bool:
-    """Deactivate an admin by email; return False if not found."""
-    normalized_email = email.strip().lower()
-    admin = db.scalar(select(AdminUser).where(AdminUser.email == normalized_email))
-
-    if not admin:
-        return False
-
-    admin.is_active = False
-    db.commit()
-    return True
 
 
 def list_admins(db: Session) -> list[AdminUser]:

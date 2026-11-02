@@ -12,7 +12,7 @@ There are three access levels:
 |---|---|---|
 | Public website | No sign-in for read-only content | `GET /api/v1/public/site`, registration choices and exam availability |
 | Student | Firebase Phone Auth token + Firebase App Check | Brochure download and exam start after a fresh OTP |
-| Administrator | Verified Firebase email/password ID token and an active database allow-list entry | Every `/api/v1/admin/**` endpoint |
+| Administrator | Verified Firebase Google ID token and an active database allow-list entry | Every `/api/v1/admin/**` endpoint |
 | Cloud Scheduler | Google OIDC token from an allowed service account | `/internal/lead-sync/flush` only |
 
 The backend does **not** accept a Firebase API key as authorization. The web
@@ -22,16 +22,17 @@ checks email verification, then looks up the email in `admin_users`.
 
 ### Admin accounts
 
-An operator creates an allow-list entry and Firebase account with:
+An operator registers the one existing, verified Firebase account exactly once with:
 
 ```bash
-./scripts/run-cli.sh production create-admin --email person@example.com --name "Person Name"
+./scripts/run-cli.sh production grant-existing-admin --email person@example.com --name "Person Name"
 ```
 
-The Firebase account contains the password. The database
-only contains the email allow-list, display name, active state and last-login
-time. Deactivating an entry blocks backend access immediately, even if the
-Firebase user still exists.
+Firebase Authentication provides Google Sign-In. The database contains only the
+single Firebase UID/email allow-list record, display name, active state and
+last-login time. A database singleton constraint prevents a second record;
+there is no administrator-creation endpoint, dashboard control, or public
+password-reset flow.
 
 ## What an admin can do
 
@@ -41,16 +42,16 @@ Firebase user still exists.
 | Site settings | Edit phone, WhatsApp, email, address, inquiry-form URL and social links | `/admin/site-settings` | `site_settings` |
 | Courses | View and edit the three fixed course records, fee and fee breakup | `/admin/courses` | `courses` |
 | Batches | Create, edit and remove course batches | `/admin/batches` | `batches` |
-| Brochures | Upload, replace, preview and remove PDFs | `/admin/brochures` | Metadata: `brochures`; file: private Firebase Storage |
+| Brochures | Unavailable pending approved `brochures` schema | — | No active workflow until metadata storage is implemented |
 | Banners | Upload, reorder, activate, edit or delete website banners | `/admin/banners` | Metadata: `banners`; images/thumbnails: Firebase Storage |
 | Announcements | Create, edit, schedule, activate and remove notices | `/admin/announcements` | `announcements` |
-| Gallery | Upload, reorder, activate, caption and remove photos | `/admin/gallery` | Metadata: `gallery_images`; images/thumbnails: Firebase Storage |
+| Gallery | Unavailable pending approved `gallery_images` schema | — | No active workflow until metadata storage is implemented |
 | Videos | Add, edit, reorder, activate or delete supported YouTube/Instagram links | `/admin/videos` | `videos` |
 | Mock exam | Download template, validate, upload and delete one of three question sets | `/admin/exam` | `exam_sets`, `exam_passages`, `exam_questions`, `exam_options` |
-| Lead delivery | See queued Google Sheets rows and retry their delivery | `/admin/lead-sync` | `pending_sheet_rows` while waiting; final lead data goes to Google Sheets |
+| Lead delivery | Google Sheets retry dashboard unavailable pending `pending_sheet_rows` | — | Exam registrations write directly to Google Sheets |
 
-All admin routes require the same Firebase/MFA/allow-list check. There is no
-role hierarchy in this version: every active administrator has the same access.
+All admin routes require the same Firebase Google-provider/verified-email/UID allow-list check.
+There is exactly one administrator and no role hierarchy.
 
 ## API inventory
 
@@ -94,7 +95,8 @@ endpoint.
 PostgreSQL is accessed through SQLAlchemy sessions from `app/core/database.py`.
 Each request receives one session via `get_db`; successful service methods call
 `commit()`, and failed requests are rolled back. Alembic is the source of truth
-for schema changes: apply them with `alembic upgrade head`. `db/schema.sql` is
+for schema changes: apply them with an explicit branch target. Existing
+PlanetFiance uses `alembic upgrade planetfiance_existing@head`; `db/schema.sql` is
 a reviewable generated copy, not the normal migration mechanism.
 
 | Table | Owned by | Contents |
@@ -112,7 +114,7 @@ a reviewable generated copy, not the normal migration mechanism.
 | `exam_passages` | `exam` | Shared reading passages for a set |
 | `exam_questions` | `exam` | Questions for a set or passage |
 | `exam_options` | `exam` | Options and correct-answer flags |
-| `pending_sheet_rows` | `lead_sync` | Temporary retry queue when Google Sheets is unavailable |
+| `pending_sheet_rows` | Not active | Reserved for a future approved Google Sheets retry queue |
 
 ### Data that is intentionally not in PostgreSQL
 

@@ -9,6 +9,11 @@ from app.modules.courses.models import Course
 from app.modules.courses.schemas import CourseOut, CourseUpdate, FeeBreakupOut
 
 
+def _fee_items(value: object) -> list[dict]:
+    """Return valid fee rows without rewriting a legacy text value on read."""
+    return value if isinstance(value, list) else []
+
+
 def list_courses(db: Session, *, active_only: bool = False) -> list[Course]:
     stmt = select(Course).order_by(Course.display_order, Course.name)
     if active_only:
@@ -39,7 +44,7 @@ def to_out(course: Course) -> CourseOut:
                 amount_inr=item["amount_inr"],
                 amount_display=format_inr(item["amount_inr"]),
             )
-            for item in (course.fee_breakup or [])
+            for item in _fee_items(course.fee_breakup)
         ],
         display_order=course.display_order,
         is_active=course.is_active,
@@ -59,7 +64,7 @@ def update_course(db: Session, code: str, data: CourseUpdate) -> CourseOut:
         changes["fee_breakup"] = []
 
     total = changes.get("total_fee_inr", course.total_fee_inr)
-    breakup = changes.get("fee_breakup", course.fee_breakup or [])
+    breakup = changes.get("fee_breakup", _fee_items(course.fee_breakup))
     breakup_total = sum(
         item.amount_inr if hasattr(item, "amount_inr") else item["amount_inr"] for item in breakup
     )

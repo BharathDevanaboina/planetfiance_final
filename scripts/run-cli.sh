@@ -3,9 +3,8 @@
 # using the same image, database and secrets as the live service.
 #
 # Usage examples:
-#   ./scripts/run-cli.sh production create-admin --email admin@college.com --name "College Admin"
+#   ./scripts/run-cli.sh production grant-existing-admin --email admin@college.com --name "College Admin"
 #   ./scripts/run-cli.sh production list-admins
-#   ./scripts/run-cli.sh staging flush-lead-sync
 set -euo pipefail
 
 ENVIRONMENT="${1:-}"

@@ -42,10 +42,10 @@ def _get(db: Session, banner_id: uuid.UUID) -> Banner:
     return banner
 
 
-def _course_id(db: Session, course_code: str | None) -> uuid.UUID | None:
+def _course_code(db: Session, course_code: str | None) -> str | None:
     if not course_code:
         return None
-    return courses.get_course(db, course_code).id
+    return courses.get_course(db, course_code).code
 
 
 def create_banner(
@@ -59,11 +59,11 @@ def create_banner(
     image_data: bytes,
 ) -> BannerOut:
     title = clean_text(title, max_length=150, allow_empty=False)
-    course_id = _course_id(db, course_code)
+    resolved_course_code = _course_code(db, course_code)
     stored = store_image(storage, "banners", image_data)
     banner = Banner(
         title=title,
-        course_id=course_id,
+        course_code=resolved_course_code,
         image_path=stored.large_path,
         image_url=stored.large_url,
         thumb_path=stored.thumb_path,
@@ -86,7 +86,7 @@ def update_banner(db: Session, banner_id: uuid.UUID, data: BannerUpdate) -> Bann
     if "title" in fields and data.title is not None:
         banner.title = clean_text(data.title, max_length=150, allow_empty=False)
     if "course_code" in fields:
-        banner.course_id = _course_id(db, data.course_code)
+        banner.course_code = _course_code(db, data.course_code)
     if "display_order" in fields and data.display_order is not None:
         banner.display_order = data.display_order
     if "is_active" in fields and data.is_active is not None:

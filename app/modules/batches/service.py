@@ -29,7 +29,7 @@ def list_batches(db: Session, course_code: str | None = None) -> list[Batch]:
     stmt = select(Batch).order_by(Batch.start_date.desc())
     if course_code:
         course = courses.get_course(db, course_code)
-        stmt = stmt.where(Batch.course_id == course.id)
+        stmt = stmt.where(Batch.course_code == course.code)
     return list(db.scalars(stmt).unique())
 
 
@@ -53,7 +53,7 @@ def get(db: Session, batch_id: uuid.UUID) -> Batch:
 def create_batch(db: Session, data: BatchCreate) -> BatchOut:
     course = courses.get_course(db, data.course_code)
     batch = Batch(
-        course_id=course.id,
+        course_code=course.code,
         start_date=data.start_date,
         end_date=data.end_date,
         timings=data.timings,

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.error import Conflict, Gone, NotFound, ServiceUnavailable, ValidationFailed
 from app.core.identity import IdentityVerifier
-from app.core.sheets import SheetsClient
+from app.core.sheets import SheetsClient, SheetsError
 from app.core.tokens import sign_token, verify_token
 from app.modules.exam import paper
 from app.modules.exam.constants import REQUIRED_SECTION_COUNTS, SLOTS, TOTAL_QUESTIONS
@@ -36,7 +36,6 @@ from app.modules.exam.schemas import (
     UploadResult,
     ValidationReport,
 )
-from app.modules.lead_sync import service as lead_sync
 from app.modules.registration import service as registration
 from app.modules.registration.schemas import RegistrationSubmission
 
@@ -129,7 +128,7 @@ def upload_set(
         if not p.section:
             continue  # unused passage (reported as a warning)
         row = ExamPassage(
-            exam_set_id=exam_set.id,
+            exam_set_slot=exam_set.slot,
             passage_key=key,
             section=p.section,
             content=p.content,
@@ -140,7 +139,7 @@ def upload_set(
 
     for position, q in enumerate(report.questions, start=1):
         question = ExamQuestion(
-            exam_set_id=exam_set.id,
+            exam_set_slot=exam_set.slot,
             passage_id=passage_ids.get(q.passage_key) if q.passage_key else None,
             position=position,
             section=q.section,
@@ -174,14 +173,14 @@ def delete_set(db: Session, slot: int) -> None:
     if exam_set is None:
         raise NotFound(f"Slot {slot} is already empty.", code="SLOT_EMPTY")
 
-    question_ids = select(ExamQuestion.id).where(ExamQuestion.exam_set_id == exam_set.id)
+    question_ids = select(ExamQuestion.id).where(ExamQuestion.exam_set_slot == exam_set.slot)
     db.execute(delete(ExamOption).where(ExamOption.question_id.in_(question_ids)))
-    db.execute(delete(ExamQuestion).where(ExamQuestion.exam_set_id == exam_set.id))
-    db.execute(delete(ExamPassage).where(ExamPassage.exam_set_id == exam_set.id))
-    db.execute(delete(ExamSet).where(ExamSet.id == exam_set.id))
+    db.execute(delete(ExamQuestion).where(ExamQuestion.exam_set_slot == exam_set.slot))
+    db.execute(delete(ExamPassage).where(ExamPassage.exam_set_slot == exam_set.slot))
+    db.execute(delete(ExamSet).where(ExamSet.slot == exam_set.slot))
     db.commit()
     # The screenshot shows `paper.evict(exam_set.id)` after the commit.
-    paper.evict(exam_set.id)
+    paper.evict(exam_set.slot)
 
 
 # ----- student ---------------------------------------------------------------
@@ -205,31 +204,35 @@ def start_exam(
     submission: RegistrationSubmission,
 ) -> ExamStartResponse:
     verified = registration.verify_submission(submission, verifier, settings)
-    set_ids = list(db.scalars(select(ExamSet.id)))
-    if not set_ids:
+    set_slots = list(db.scalars(select(ExamSet.slot)))
+    if not set_slots:
         raise ServiceUnavailable(
             "The mock exam is not available right now. Please try again later.",
             code="NO_EXAM_SETS",
         )
 
     rng = random.SystemRandom()
-    snapshot = paper.load_snapshot(db, rng.choice(set_ids))
+    snapshot = paper.load_snapshot(db, rng.choice(set_slots))
     if snapshot is None:  # deleted in the meantime
         raise ServiceUnavailable("Please try again.", code="NO_EXAM_SETS")
 
-    lead_sync.deliver(
-        db,
-        sheets,
-        settings.sheets_tab_exam,
-        SHEET_HEADERS,
-        verified.sheet_values() + [snapshot.name],
-    )
+    try:
+        sheets.append_row(
+            settings.sheets_tab_exam,
+            SHEET_HEADERS,
+            verified.sheet_values() + [snapshot.name],
+        )
+    except SheetsError as exc:
+        raise ServiceUnavailable(
+            "Exam registration could not be recorded. Please try again later.",
+            code="LEAD_DELIVERY_UNAVAILABLE",
+        ) from exc
     registration.release_phone_user(verified, verifier, settings)
 
     duration = settings.exam_duration_minutes * 60
     started = int(time.time())
     token = sign_token(
-        {"sid": str(snapshot.id), "st": started, "dur": duration, "n": secrets.token_hex(4)},
+        {"sid": str(snapshot.slot), "st": started, "dur": duration, "n": secrets.token_hex(4)},
         audience=ATTEMPT_AUDIENCE,
         expires_in_seconds=duration + settings.exam_submit_grace_seconds,
         secret=settings.token_secret,
@@ -252,7 +255,7 @@ def submit_exam(db: Session, settings: Settings, body: ExamSubmitRequest) -> Exa
         audience=ATTEMPT_AUDIENCE,
         secret=settings.token_secret,
     )
-    snapshot = paper.load_snapshot(db, uuid.UUID(claims["sid"]))
+    snapshot = paper.load_snapshot(db, int(claims["sid"]))
     if snapshot is None:
         raise Gone(
             "This question set has been replaced. Please start a new exam.",

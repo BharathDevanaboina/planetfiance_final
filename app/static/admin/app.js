@@ -2,13 +2,14 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebas
 import {
   getAuth,
   onAuthStateChanged,
-  signInWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
   signOut,
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
 const root = document.querySelector("#app");
 const toastRegion = document.querySelector("#toast-region");
-const state = { auth: null, user: null, page: "dashboard", cache: {} };
+const state = { auth: null, user: null, page: "dashboard", cache: {}, visualPreview: false };
 const nav = [
   ["dashboard", "◫", "Overview"], ["settings", "⚙", "Contact & settings"],
   ["courses", "◈", "Courses & fees"], ["batches", "◷", "Batches"],
@@ -16,6 +17,50 @@ const nav = [
   ["announcements", "◉", "Announcements"], ["gallery", "▦", "Gallery"],
   ["videos", "▶", "Videos"], ["exam", "✦", "Mock exam"], ["leads", "⌁", "Lead delivery"],
 ];
+
+// This route is deliberately restricted to a local browser and is only for
+// inspecting the already-built administration UI. It never initializes
+// Firebase, sends an API request, or changes the real sign-in flow.
+const localVisualPreview = ["127.0.0.1", "localhost", "::1"].includes(window.location.hostname)
+  && new URLSearchParams(window.location.search).get("preview") === "1";
+const previewImage = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='260' viewBox='0 0 640 260'%3E%3Crect width='640' height='260' fill='%23154432'/%3E%3Ccircle cx='540' cy='45' r='120' fill='%2327a77a' opacity='.35'/%3E%3Ctext x='42' y='128' fill='white' font-family='Arial' font-size='36' font-weight='700'%3EPlanetFiance%3C/text%3E%3Ctext x='42' y='168' fill='%23cfeadf' font-family='Arial' font-size='20'%3EAdmissions open%3C/text%3E%3C/svg%3E";
+const previewData = {
+  settings: { phone: "+91 98765 43210", whatsapp: "+91 98765 43210", email: "admissions@planetfiance.example", google_form_url: "https://forms.google.com/", address: "PlanetFiance College, Hyderabad", social_links: { facebook: "https://facebook.com/", instagram: "https://instagram.com/", youtube: "https://youtube.com/", linkedin: "https://linkedin.com/", x: "" } },
+  courses: [
+    { code: "IBFAP", name: "IBFAP", duration_text: "3 years", summary: "Integrated banking, finance and accounting programme.", eligibility: "12th standard or equivalent", total_fee_inr: 180000, fee_note: "Installments available.", fee_breakup: [{ label: "Year 1", amount_inr: 60000 }, { label: "Year 2", amount_inr: 60000 }, { label: "Year 3", amount_inr: 60000 }], display_order: 1, is_active: true },
+    { code: "ADV_BCOM", name: "Advance B.Com.", duration_text: "3 years", summary: "Commerce degree with professional-skills support.", eligibility: "12th standard or equivalent", total_fee_inr: 150000, fee_note: null, fee_breakup: [{ label: "Year 1", amount_inr: 50000 }, { label: "Year 2", amount_inr: 50000 }, { label: "Year 3", amount_inr: 50000 }], display_order: 2, is_active: true },
+    { code: "PGDM", name: "PGDM", duration_text: "2 years", summary: "Postgraduate diploma in management.", eligibility: "Graduation", total_fee_inr: 220000, fee_note: "Subject to admission criteria.", fee_breakup: [{ label: "Year 1", amount_inr: 110000 }, { label: "Year 2", amount_inr: 110000 }], display_order: 3, is_active: true },
+  ],
+  batches: [
+    { id: "preview-batch-1", course_code: "IBFAP", course_name: "IBFAP", start_date: "2026-06-01", end_date: "2027-05-31", timings: "10:00 AM – 1:00 PM", mode: "offline", is_active: true },
+    { id: "preview-batch-2", course_code: "PGDM", course_name: "PGDM", start_date: "2027-01-10", end_date: "2028-01-09", timings: "6:00 PM – 8:30 PM", mode: "online", is_active: true },
+  ],
+  banners: [{ id: "preview-banner-1", title: "Admissions open for 2026", course_code: "IBFAP", image_url: previewImage, thumb_url: previewImage, image_width: 640, image_height: 260, display_order: 1, is_active: true }],
+  announcements: [{ id: "preview-announcement-1", message: "Admissions are open. Talk to our counsellors today.", link_url: "https://forms.google.com/", starts_at: "2026-11-01T00:00:00Z", ends_at: "2026-12-31T23:59:59Z", display_order: 1, is_active: true }],
+  videos: [{ id: "preview-video-1", title: "Campus life at PlanetFiance", platform: "youtube", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", embed_url: "https://www.youtube.com/embed/dQw4w9WgXcQ", video_id: "dQw4w9WgXcQ", display_order: 1, is_active: true }],
+  examSets: [
+    { slot: 1, exam_set: { slot: 1, name: "IBFAP practice set", question_count: 200, source_filename: "ibfap-preview.xlsx", uploaded_by: "local preview", created_at: "2026-11-02T00:00:00Z" } },
+    { slot: 2, exam_set: { slot: 2, name: "Commerce practice set", question_count: 200, source_filename: "bcom-preview.xlsx", uploaded_by: "local preview", created_at: "2026-11-02T00:00:00Z" } },
+    { slot: 3, exam_set: null },
+  ],
+};
+
+const copyPreview = (value) => JSON.parse(JSON.stringify(value));
+async function previewApi(path, { method = "GET", body } = {}) {
+  if (path === "/admin/exam/sets/preview") return { report: { ok: true, question_count: 200, passage_count: 0, errors: [], warnings: [] }, questions: [] };
+  if (method !== "GET") return body || null;
+  const data = {
+    "/admin/me": { email: "local-preview@planetfiance.invalid", role: "admin" },
+    "/admin/site-settings": previewData.settings,
+    "/admin/courses": previewData.courses,
+    "/admin/batches": previewData.batches,
+    "/admin/banners": previewData.banners,
+    "/admin/announcements": previewData.announcements,
+    "/admin/videos": previewData.videos,
+    "/admin/exam/sets": previewData.examSets,
+  };
+  return copyPreview(data[path] ?? { report: { ok: true, question_count: 200, passage_count: 0, errors: [], warnings: [] }, questions: [] });
+}
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>'"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c]));
 const money = (value) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value || 0);
@@ -36,8 +81,9 @@ function problem(error) {
 
 function loginProblem(error) {
   const messages = {
-    "auth/configuration-not-found": "Firebase Email/Password sign-in is not enabled for this project. Enable it in Firebase Console → Authentication → Sign-in method.",
-    "auth/invalid-credential": "The email address or password is incorrect.",
+    "auth/configuration-not-found": "Firebase Google Sign-In is not configured for this project. Enable Google in Firebase Console → Authentication → Sign-in method.",
+    "auth/popup-closed-by-user": "Google Sign-In was cancelled.",
+    "auth/unauthorized-domain": "This domain is not authorised for Google Sign-In in Firebase.",
     "auth/user-disabled": "This Firebase account has been disabled.",
     "auth/too-many-requests": "Too many sign-in attempts. Please wait a moment and try again.",
   };
@@ -50,6 +96,7 @@ async function token() {
 }
 
 async function api(path, { method = "GET", body, form = false } = {}) {
+  if (state.visualPreview) return previewApi(path, { method, body, form });
   const headers = { Authorization: `Bearer ${await token()}` };
   if (body && !form) headers["Content-Type"] = "application/json";
   const response = await fetch(`/api/v1${path}`, { method, headers, body: body ? (form ? body : JSON.stringify(body)) : undefined });
@@ -88,20 +135,20 @@ function confirmAction(title, message, actionLabel = "Delete") {
   });
 }
 
-function loginScreen(message = "Sign in with your authorized administrator email and password.") {
-  root.innerHTML = `<main class="auth-shell"><section class="auth-card"><div class="brand-mark">C</div><h1>College Control</h1><p>${escapeHtml(message)}</p><form id="login-form"><div class="field"><label>Email address</label><input required type="email" name="email" autocomplete="email" /></div><div class="field"><label>Password</label><input required type="password" name="password" autocomplete="current-password" /></div><button class="button" type="submit">Sign in securely</button></form></section></main>`;
-  root.querySelector("#login-form").onsubmit = async (event) => {
-    event.preventDefault(); const form = new FormData(event.currentTarget);
-    try { await signInWithEmailAndPassword(state.auth, form.get("email"), form.get("password")); }
+function loginScreen(message = "Sign in with the one authorized Google account.") {
+  root.innerHTML = `<main class="auth-shell"><section class="auth-card"><div class="brand-mark">C</div><h1>College Control</h1><p>${escapeHtml(message)}</p><button class="button" id="google-sign-in" type="button">Continue with Google</button><p class="eyebrow" style="margin-top:16px">Only the registered Google account can access this dashboard.</p></section></main>`;
+  root.querySelector("#google-sign-in").onclick = async () => {
+    try { await signInWithPopup(state.auth, new GoogleAuthProvider()); }
     catch (error) { loginProblem(error); }
   };
 }
 
 function shell() {
   const initial = (state.user?.email || "A").slice(0, 1).toUpperCase();
-  root.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="brand-mark">C</span><span>College Admin</span></div><nav>${nav.map(([id, icon, label]) => `<button class="nav-item ${state.page === id ? "active" : ""}" data-page="${id}"><span class="nav-icon">${icon}</span><span>${label}</span></button>`).join("")}</nav><p class="sidebar-footer">Securely connected to the existing FastAPI administration APIs.</p></aside><main class="main"><header class="topbar"><div><strong>Administration</strong><div class="eyebrow">Content, admissions and student services</div></div><div class="user-menu"><span class="user-email">${escapeHtml(state.user?.email || "")}</span><span class="avatar">${initial}</span><button class="text-button" id="sign-out">Sign out</button></div></header><section id="page" class="page"><div class="loading"><div class="spinner"></div></div></section></main></div>`;
+  const previewBadge = state.visualPreview ? `<span class="status warning">Local visual preview</span>` : "";
+  root.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="brand-mark">C</span><span>College Admin</span></div><nav>${nav.map(([id, icon, label]) => `<button class="nav-item ${state.page === id ? "active" : ""}" data-page="${id}"><span class="nav-icon">${icon}</span><span>${label}</span></button>`).join("")}</nav><p class="sidebar-footer">${state.visualPreview ? "Sample data only. Nothing can be saved from this local preview." : "Securely connected to the existing FastAPI administration APIs."}</p></aside><main class="main"><header class="topbar"><div><strong>Administration</strong><div class="eyebrow">Content, admissions and student services</div></div><div class="user-menu">${previewBadge}<span class="user-email">${escapeHtml(state.user?.email || "")}</span><span class="avatar">${initial}</span><button class="text-button" id="sign-out">${state.visualPreview ? "Exit preview" : "Sign out"}</button></div></header><section id="page" class="page"><div class="loading"><div class="spinner"></div></div></section></main></div>`;
   root.querySelectorAll("[data-page]").forEach((button) => button.onclick = () => { state.page = button.dataset.page; shell(); renderPage(); });
-  root.querySelector("#sign-out").onclick = () => signOut(state.auth);
+  root.querySelector("#sign-out").onclick = () => state.visualPreview ? window.location.assign("/admin/") : signOut(state.auth);
 }
 
 const title = (heading, copy, action = "") => `<div class="page-title"><div><h1>${heading}</h1><p>${copy}</p></div>${action}</div>`;
@@ -120,8 +167,10 @@ async function renderPage() {
 }
 
 async function dashboard(target) {
-  const [courses, batches, brochures, sets, lead] = await Promise.all([api("/admin/courses"), api("/admin/batches"), api("/admin/brochures"), api("/admin/exam/sets"), api("/admin/lead-sync/status")]);
-  target.innerHTML = `${title("Welcome back", "Manage your website content and admissions operations from one place.")}<div class="grid cards"><div class="card metric"><small>Active courses</small><strong>${courses.filter((x) => x.is_active).length}</strong></div><div class="card metric"><small>Active batches</small><strong>${batches.filter((x) => x.is_active).length}</strong></div><div class="card metric"><small>Brochures ready</small><strong>${brochures.filter((x) => x.has_brochure).length}/3</strong></div><div class="card metric"><small>Queued sheet rows</small><strong>${lead.pending_rows}</strong></div></div><div class="grid two-col" style="margin-top:18px">${panel("Exam-set readiness", `<div class="detail-list">${sets.map((item) => `<div><span>Question set ${item.slot}</span><strong>${item.exam_set ? `${item.exam_set.question_count} questions` : "Not uploaded"}</strong></div>`).join("")}</div>`, `<button class="button secondary small" data-page-link="exam">Manage sets</button>`)}${panel("Quick actions", `<div class="actions"><button class="button secondary" data-page-link="courses">Edit courses</button><button class="button secondary" data-page-link="brochures">Upload brochure</button><button class="button secondary" data-page-link="banners">Manage banners</button><button class="button secondary" data-page-link="leads">Lead delivery</button></div>`)}</div>`;
+  // Brochure metadata and the Google Sheets retry queue are intentionally not
+  // queried until their missing database tables have separately been approved.
+  const [courses, batches, sets] = await Promise.all([api("/admin/courses"), api("/admin/batches"), api("/admin/exam/sets")]);
+  target.innerHTML = `${title("Welcome back", "Manage your website content and admissions operations from one place.")}<div class="grid cards"><div class="card metric"><small>Active courses</small><strong>${courses.filter((x) => x.is_active).length}</strong></div><div class="card metric"><small>Active batches</small><strong>${batches.filter((x) => x.is_active).length}</strong></div><div class="card metric"><small>Brochure metadata</small><strong style="font-size:17px">Not configured</strong></div><div class="card metric"><small>Lead retry queue</small><strong style="font-size:17px">Not configured</strong></div></div><div class="grid two-col" style="margin-top:18px">${panel("Exam-set readiness", `<div class="detail-list">${sets.map((item) => `<div><span>Question set ${item.slot}</span><strong>${item.exam_set ? `${item.exam_set.question_count} questions` : "Not uploaded"}</strong></div>`).join("")}</div>`, `<button class="button secondary small" data-page-link="exam">Manage sets</button>`)}${panel("Quick actions", `<div class="actions"><button class="button secondary" data-page-link="courses">Edit courses</button><button class="button secondary" data-page-link="banners">Manage banners</button></div>`)}</div>`;
   bindPageLinks(target);
 }
 
@@ -161,16 +210,7 @@ function batchModal(item, courses) {
 }
 
 async function brochures(target) {
-  const items = await api("/admin/brochures");
-  target.innerHTML = `${title("Brochures", "Upload one private PDF per course. Students receive it only after verified OTP.")}${panel("Course brochures", table(["Course", "File", "Updated", ""], items.map((item) => `<tr><td><strong>${escapeHtml(item.course_name)}</strong><br><small>${item.course_code}</small></td><td>${item.has_brochure ? `${escapeHtml(item.original_filename)}<br><small>${Math.ceil(item.size_bytes / 1024)} KB</small>` : `<span class="status warning">Missing</span>`}</td><td>${date(item.updated_at)}</td><td><div class="actions"><button class="button secondary small" data-upload-brochure="${item.course_code}">${item.has_brochure ? "Replace" : "Upload"}</button>${item.has_brochure ? `<a class="button secondary small" target="_blank" href="/api/v1/admin/brochures/${item.course_code}/file">Preview</a><button class="button danger small" data-delete-brochure="${item.course_code}">Delete</button>` : ""}</div></td></tr>`).join("")))}`;
-  target.querySelectorAll("[data-upload-brochure]").forEach((button) => button.onclick = () => brochureModal(button.dataset.uploadBrochure));
-  target.querySelectorAll("[data-delete-brochure]").forEach((button) => button.onclick = async () => { if (await confirmAction("Remove brochure", "Students will no longer be able to download this PDF.")) { try { await api(`/admin/brochures/${button.dataset.deleteBrochure}`, { method: "DELETE" }); notice("Brochure removed."); renderPage(); } catch (error) { problem(error); } } });
-}
-
-function brochureModal(code) {
-  const el = modal(`Upload ${code} brochure`, `<form id="brochure-form"><div class="file-drop"><label>Choose a PDF brochure<input style="margin-top:10px" name="file" accept="application/pdf,.pdf" type="file" required /></label><p id="file-name">Maximum size follows the backend limit.</p></div></form>`, `<button class="button secondary" data-close-modal>Cancel</button><button class="button" form="brochure-form">Upload PDF</button>`);
-  el.querySelector("input").onchange = (event) => { el.querySelector("#file-name").textContent = event.target.files[0]?.name || ""; };
-  el.querySelector("#brochure-form").onsubmit = async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); try { await api(`/admin/brochures/${code}`, { method: "PUT", body: data, form: true }); el.remove(); notice("Brochure uploaded."); renderPage(); } catch (error) { problem(error); } };
+  target.innerHTML = unavailablePage("Brochures", "The verified PlanetFiance schema does not yet contain brochure metadata. This page is disabled until that schema is approved and migrated.");
 }
 
 async function banners(target) {
@@ -196,20 +236,7 @@ function announcementModal(item) {
 }
 
 async function gallery(target) {
-  const items = await api("/admin/gallery");
-  target.innerHTML = `${title("Gallery", "Upload photos, captions and website order.", `<button class="button" id="add-gallery">+ Upload photos</button>`)}<div class="toolbar"><input class="search" placeholder="Search captions" data-filter /></div>${panel("Gallery images", table(["Image", "Caption", "Order", "Status", ""], items.map((item) => `<tr data-search="${escapeHtml(item.caption || "")}"><td><img class="preview" src="${escapeHtml(item.thumb_url)}" alt="" /></td><td>${escapeHtml(item.caption || "—")}</td><td>${item.display_order}</td><td>${status(item.is_active)}</td><td><button class="button secondary small" data-edit-gallery="${item.id}">Edit</button> <button class="button danger small" data-delete-gallery="${item.id}">Delete</button></td></tr>`).join("")))}`;
-  filterTable(target); target.querySelector("#add-gallery").onclick = () => galleryUploadModal(); target.querySelectorAll("[data-edit-gallery]").forEach((button) => button.onclick = () => galleryEditModal(items.find((x) => x.id === button.dataset.editGallery))); target.querySelectorAll("[data-delete-gallery]").forEach((button) => button.onclick = async () => { if (await confirmAction("Delete gallery image", "The image will be removed from storage and the website.")) { try { await api(`/admin/gallery/${button.dataset.deleteGallery}`, { method: "DELETE" }); notice("Image deleted."); renderPage(); } catch (error) { problem(error); } } });
-}
-
-function galleryUploadModal() {
-  const el = modal("Upload gallery photos", `<form id="gallery-upload"><div class="file-drop"><label>Select one or more JPEG, PNG or WebP photos<input required name="images" multiple accept="image/jpeg,image/png,image/webp" type="file" /></label><p id="image-count">Each photo is resized and stored using the existing image pipeline.</p></div><div class="form-grid"><div class="field"><label>Caption for one image (optional)</label><input name="caption" /></div><div class="field"><label>Starting display order</label><input name="display_order" type="number" min="0" value="0" /></div></div></form>`, `<button class="button secondary" data-close-modal>Cancel</button><button class="button" form="gallery-upload">Upload photos</button>`);
-  el.querySelector("input[type=file]").onchange = (event) => { el.querySelector("#image-count").textContent = `${event.target.files.length} photo(s) selected.`; };
-  el.querySelector("#gallery-upload").onsubmit = async (event) => { event.preventDefault(); const f = new FormData(event.currentTarget); const files = [...f.getAll("images")].filter((x) => x instanceof File && x.size); try { for (let i = 0; i < files.length; i += 1) { const data = new FormData(); data.append("image", files[i]); data.append("caption", files.length === 1 ? f.get("caption") : ""); data.append("display_order", String(Number(f.get("display_order")) + i)); await api("/admin/gallery", { method: "POST", body: data, form: true }); } el.remove(); notice(`${files.length} photo(s) uploaded.`); renderPage(); } catch (error) { problem(error); } };
-}
-
-function galleryEditModal(item) {
-  const el = modal("Edit gallery image", `<img class="preview-large" src="${escapeHtml(item.image_url)}" alt="" /><form id="gallery-form" style="margin-top:16px"><div class="form-grid"><div class="field full"><label>Caption</label><input name="caption" value="${escapeHtml(item.caption || "")}" /></div><div class="field"><label>Display order</label><input name="display_order" type="number" min="0" value="${item.display_order}" /></div><label class="check"><input name="is_active" type="checkbox" ${item.is_active ? "checked" : ""}/> Show on website</label></div></form>`, `<button class="button secondary" data-close-modal>Cancel</button><button class="button" form="gallery-form">Save image</button>`);
-  el.querySelector("#gallery-form").onsubmit = async (event) => { event.preventDefault(); const f = new FormData(event.currentTarget); try { await api(`/admin/gallery/${item.id}`, { method: "PATCH", body: { caption: f.get("caption") || null, display_order: Number(f.get("display_order")), is_active: f.get("is_active") === "on" } }); el.remove(); notice("Gallery image saved."); renderPage(); } catch (error) { problem(error); } };
+  target.innerHTML = unavailablePage("Gallery", "The verified PlanetFiance schema does not yet contain gallery image metadata. This page is disabled until that schema is approved and migrated.");
 }
 
 async function videos(target) {
@@ -250,10 +277,10 @@ function examUploadModal(slot, existing) {
 async function deleteExamSet(slot) { if (await confirmAction("Remove question set", "Students will not be assigned this set after it is removed.")) { try { await api(`/admin/exam/sets/${slot}`, { method: "DELETE" }); notice("Question set removed."); renderPage(); } catch (error) { problem(error); } } }
 
 async function leads(target) {
-  const item = await api("/admin/lead-sync/status");
-  target.innerHTML = `${title("Lead delivery", "Brochure-download and exam-registration leads continue to use the existing Google Sheets integration.", item.spreadsheet_url ? `<a class="button" target="_blank" href="${escapeHtml(item.spreadsheet_url)}">Open connected spreadsheet</a>` : "")}<div class="grid cards"><div class="card metric"><small>Rows waiting to sync</small><strong>${item.pending_rows}</strong></div><div class="card metric"><small>Oldest queued row</small><strong style="font-size:17px">${date(item.oldest_pending_since)}</strong></div><div class="card metric"><small>Highest retry count</small><strong>${item.max_attempts_so_far}</strong></div></div><section class="panel" style="margin-top:18px"><div class="panel-body"><p style="color:var(--muted);margin-top:0">If Google Sheets is temporarily unavailable, the backend retains a retry row in PostgreSQL and Cloud Scheduler retries it. You can trigger a secure retry now.</p><button id="flush-leads" class="button">Retry pending rows</button></div></section>`;
-  target.querySelector("#flush-leads").onclick = async () => { try { const result = await api("/admin/lead-sync/flush", { method: "POST" }); notice(`Delivered: ${result.delivered}; still pending: ${result.still_pending}.`); renderPage(); } catch (error) { problem(error); } };
+  target.innerHTML = unavailablePage("Lead delivery", "Google Sheets retry status requires the pending_sheet_rows table, which is not in the verified PlanetFiance schema. Existing direct Google Sheets delivery remains unchanged.");
 }
+
+const unavailablePage = (heading, message) => `${title(heading, "Unavailable until its database schema is implemented.")}<section class="panel"><div class="panel-body"><p style="color:var(--muted);margin:0">${escapeHtml(message)}</p></div></section>`;
 
 function imageReplaceModal(kind, id) {
   const el = modal("Replace banner image", `<form id="replace-image"><div class="field"><label>New JPEG, PNG or WebP image</label><input name="image" required accept="image/jpeg,image/png,image/webp" type="file" /></div></form>`, `<button class="button secondary" data-close-modal>Cancel</button><button class="button" form="replace-image">Replace image</button>`);
@@ -271,6 +298,13 @@ root.addEventListener("click", (event) => {
 });
 
 async function boot() {
+  if (localVisualPreview) {
+    state.visualPreview = true;
+    state.user = { email: "local-preview@planetfiance.invalid" };
+    shell();
+    renderPage();
+    return;
+  }
   const config = window.__FIREBASE_CONFIG__;
   if (!config?.apiKey || !config?.authDomain || !config?.appId) { loginScreen("Firebase web configuration is missing. Set FIREBASE_WEB_* values for this environment before signing in."); return; }
   state.auth = getAuth(initializeApp(config));

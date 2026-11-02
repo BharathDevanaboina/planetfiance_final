@@ -42,7 +42,7 @@ If it doesn't:
 - **Check the logs:** Cloud Console → Cloud Run → `college-api` → Logs. Search for "Google Sheets".
 - `403` means the sheet isn't shared with the service account, or the Sheets API is off.
 - `400 Unable to parse range` means the tab name doesn't match exactly.
-- **Check the retry queue:** in the admin portal, or `GET /api/v1/admin/lead-sync/status`. Queued rows are retried every 5 minutes after you fix the problem. Nothing is lost.
+- **Current PlanetFiance behavior:** exam registrations are written directly to Google Sheets. If Sheets is unavailable, the exam start is refused so the student can retry; the retry queue awaits a separately approved `pending_sheet_rows` schema.
 
 ## Good to know
 

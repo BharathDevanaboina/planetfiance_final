@@ -15,7 +15,7 @@ docker compose up --build       # starts PostgreSQL + the API, runs migrations a
 Useful commands:
 
 ```bash
-docker compose exec api python -m app.cli create-admin --email admin@college.com --name "Admin"
+# The single-admin registration command requires a real, existing verified Firebase account.
 docker compose exec api python -m app.cli --help                 # all operator commands
 docker compose exec db psql -U college -d college                # SQL shell
 docker compose down                                               # stop
@@ -31,8 +31,9 @@ python3.12 -m venv .venv
 source .venv/bin/activate                 # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
 cp .env.example .env                      # local settings (fakes for Firebase and Sheets)
-alembic upgrade head                      # create tables + the 3 courses
-python -m app.cli create-admin --email admin@college.com --name "Admin"
+# Fresh local legacy database only: alembic upgrade 0001
+# Existing PlanetFiance database only: alembic upgrade 'planetfiance_existing@head'
+# Do not use this local fake environment to register a production administrator.
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -98,8 +99,8 @@ ruff format .      # auto-format
 1. Edit the models in `app/modules/<name>/models.py`.
 2. Run `alembic revision --autogenerate -m "short description"`. This creates a file in `migrations/versions/`.
 3. **Read the generated file** and fix anything odd. Autogenerate can't detect renames; it sees a drop plus an add.
-4. `alembic upgrade head` (apply locally), then `alembic downgrade -1` and `alembic upgrade head` again, to check both directions.
-5. Regenerate the SQL snapshot: `alembic upgrade head --sql > db/schema.sql`. Then put back the comment header at the top of the file.
+4. Never use a generic Alembic `head` with these two branches. Test a fresh legacy database with explicit `0001`; test an existing PlanetFiance database only after its approved baseline, using `planetfiance_existing@head`.
+5. Do not regenerate `db/schema.sql` from the PlanetFiance existing-database branch: its baseline is intentionally a no-op.
 6. Commit the model change, the migration and `db/schema.sql` together.
 
 Rules that keep deployments safe:
