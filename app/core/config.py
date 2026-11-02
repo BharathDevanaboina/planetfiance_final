@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     app_env: Environment = "local"
     app_name: str = "college-backend"
     log_level: str = "INFO"
+    local_dashboard_mode: bool = False
+    local_firebase_auth_test_mode: bool = False
     enabled_modules: str = Field(
         default="all",
         description="Comma-separated module names to run in this service, or 'all'.",
@@ -129,6 +131,37 @@ class Settings(BaseSettings):
 
     def validate_for_environment(self) -> None:
         """Refuse to start with unsafe settings in staging or production."""
+        if self.local_dashboard_mode or self.local_firebase_auth_test_mode:
+            local_problems: list[str] = []
+            if self.local_dashboard_mode and self.local_firebase_auth_test_mode:
+                local_problems.append("only one local dashboard mode may be enabled")
+            if self.app_env != "local":
+                local_problems.append("local dashboard modes are permitted only when APP_ENV is \"local\"")
+            expected_auth_mode = "fake" if self.local_dashboard_mode else "firebase"
+            if self.auth_mode != expected_auth_mode:
+                local_problems.append(f"selected local mode requires AUTH_MODE=\"{expected_auth_mode}\"")
+            if self.storage_backend != "local":
+                local_problems.append('local dashboard modes require STORAGE_BACKEND="local"')
+            if self.sheets_backend != "fake":
+                local_problems.append('local dashboard modes require SHEETS_BACKEND="fake"')
+            if self.sqlalchemy_url.get_backend_name() != "sqlite":
+                local_problems.append("local dashboard modes require a SQLite DATABASE_URL")
+            if self.local_firebase_auth_test_mode:
+                missing = [
+                    name
+                    for name, value in (
+                        ("GCP_PROJECT_ID", self.gcp_project_id),
+                        ("FIREBASE_WEB_API_KEY", self.firebase_web_api_key),
+                        ("FIREBASE_WEB_AUTH_DOMAIN", self.firebase_web_auth_domain),
+                        ("FIREBASE_WEB_APP_ID", self.firebase_web_app_id),
+                    )
+                    if not value
+                ]
+                if missing:
+                    local_problems.append("Firebase auth test mode requires " + ", ".join(missing))
+            if local_problems:
+                raise RuntimeError("Invalid local dashboard configuration: " + "; ".join(local_problems))
+
         if not self.is_cloud:
             return
         problems: list[str] = []

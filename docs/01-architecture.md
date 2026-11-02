@@ -21,7 +21,7 @@ flowchart LR
 - **PostgreSQL (Cloud SQL)** stores everything the admin manages: settings, courses, batches, banners, announcements, gallery, videos, brochure metadata and exam questions.
 - **Firebase Storage** stores image files (public) and brochure PDFs (private; students get them only through the API after OTP).
 - **Google Sheets** receives one row per brochure download and per exam registration. Student lead details are not persisted in PostgreSQL; if Sheets is briefly unavailable, the row is held temporarily in the retry queue and Cloud Scheduler retries it every 5 minutes. The backend only "verifies" the tokens Firebase issues.
-- **Firebase Auth** handles the single administrator's Google Sign-In and the student phone OTP.
+- **Firebase Auth** handles the single administrator's Email/Password sign-in and the student phone OTP.
 - **Admin SPA** is served at `/admin` from this FastAPI service. It uses the
   Firebase Web SDK only to obtain an administrator's ID token; all data changes
   still go through the existing protected FastAPI APIs.

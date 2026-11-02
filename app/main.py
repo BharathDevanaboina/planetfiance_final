@@ -27,6 +27,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
     settings.validate_for_environment()
+    if settings.local_dashboard_mode or settings.local_firebase_auth_test_mode:
+        from app.core.local_development import initialize_local_dashboard
+
+        initialize_local_dashboard(settings, include_local_admin=settings.local_dashboard_mode)
     modules = select_modules(settings.enabled_modules)
 
     show_docs = settings.app_env != "production"
@@ -78,6 +82,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
         return Response(
             "window.__FIREBASE_CONFIG__ = " + json.dumps(config) + ";\n",
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @application.get("/admin/local-development.js", include_in_schema=False)
+    def admin_local_development_config() -> Response:
+        """Expose only the local-development switch; never production credentials."""
+        return Response(
+            "window.__LOCAL_DASHBOARD_MODE__ = "
+            + json.dumps(settings.local_dashboard_mode)
+            + ";\n",
             media_type="application/javascript",
             headers={"Cache-Control": "no-store"},
         )

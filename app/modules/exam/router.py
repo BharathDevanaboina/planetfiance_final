@@ -146,6 +146,23 @@ def upload_set(
     return service.upload_set(db, slot, name, file.filename or "questions.xlsx", data, admin.email)
 
 
+@admin_router.put(
+    "/sets/{slot}",
+    response_model=UploadResult,
+    summary="Atomically replace a populated question set",
+)
+def replace_set(
+    slot: int = Path(ge=1, le=3),
+    file: UploadFile = File(...),
+    name: str | None = Form(default=None, description='Display name, e.g. "Set 1"'),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    admin: AdminPrincipal = Depends(require_admin),
+) -> UploadResult:
+    data = read_upload(file, max_mb=settings.max_excel_upload_mb)
+    return service.replace_set(db, slot, name, file.filename or "questions.xlsx", data, admin.email)
+
+
 @admin_router.delete(
     "/sets/{slot}",
     status_code=204,

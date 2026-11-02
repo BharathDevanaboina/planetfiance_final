@@ -105,6 +105,41 @@ def upload_set(
             code="SLOT_OCCUPIED",
         )
 
+    report = _validated_report(data)
+    exam_set = _insert_set(db, slot, name, filename, report, uploaded_by)
+    db.commit()
+    db.refresh(exam_set)
+    return UploadResult(exam_set=_set_out(exam_set), warnings=_issues(report.warnings))
+
+
+def replace_set(
+    db: Session, slot: int, name: str | None, filename: str, data: bytes, uploaded_by: str
+) -> UploadResult:
+    """Atomically replace one populated slot after fully validating the new file.
+
+    Parsing is completed before any existing records are removed. If parsing,
+    insertion, or commit fails, the session rollback preserves the old set.
+    """
+    if slot not in SLOTS:
+        raise NotFound("Slot must be 1, 2 or 3.", code="INVALID_SLOT")
+    report = _validated_report(data)
+    existing = db.scalar(select(ExamSet).where(ExamSet.slot == slot))
+    if existing is None:
+        raise NotFound(f"Slot {slot} is empty; upload a new set instead.", code="SLOT_EMPTY")
+
+    try:
+        _delete_set_rows(db, existing)
+        exam_set = _insert_set(db, slot, name, filename, report, uploaded_by)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(exam_set)
+    paper.evict(slot)
+    return UploadResult(exam_set=_set_out(exam_set), warnings=_issues(report.warnings))
+
+
+def _validated_report(data: bytes) -> ImportReport:
     report = parse_workbook(data)
     if not report.ok:
         raise ValidationFailed(
@@ -112,6 +147,12 @@ def upload_set(
             code="INVALID_QUESTION_SET",
             extra={"report": to_report(report).model_dump()},
         )
+    return report
+
+
+def _insert_set(
+    db: Session, slot: int, name: str | None, filename: str, report: ImportReport, uploaded_by: str
+) -> ExamSet:
 
     exam_set = ExamSet(
         slot=slot,
@@ -160,12 +201,7 @@ def upload_set(
             ]
         )
 
-    db.commit()
-    db.refresh(exam_set)
-    return UploadResult(
-        exam_set=_set_out(exam_set),
-        warnings=_issues(report.warnings),
-    )
+    return exam_set
 
 
 def delete_set(db: Session, slot: int) -> None:
@@ -173,14 +209,18 @@ def delete_set(db: Session, slot: int) -> None:
     if exam_set is None:
         raise NotFound(f"Slot {slot} is already empty.", code="SLOT_EMPTY")
 
+    _delete_set_rows(db, exam_set)
+    db.commit()
+    # The screenshot shows `paper.evict(exam_set.id)` after the commit.
+    paper.evict(exam_set.slot)
+
+
+def _delete_set_rows(db: Session, exam_set: ExamSet) -> None:
     question_ids = select(ExamQuestion.id).where(ExamQuestion.exam_set_slot == exam_set.slot)
     db.execute(delete(ExamOption).where(ExamOption.question_id.in_(question_ids)))
     db.execute(delete(ExamQuestion).where(ExamQuestion.exam_set_slot == exam_set.slot))
     db.execute(delete(ExamPassage).where(ExamPassage.exam_set_slot == exam_set.slot))
     db.execute(delete(ExamSet).where(ExamSet.slot == exam_set.slot))
-    db.commit()
-    # The screenshot shows `paper.evict(exam_set.id)` after the commit.
-    paper.evict(exam_set.slot)
 
 
 # ----- student ---------------------------------------------------------------

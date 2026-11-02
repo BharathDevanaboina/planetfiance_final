@@ -14,7 +14,7 @@ The Firebase project and the Google Cloud project are the same project.
 
 1. Firebase Console → **Authentication** → **Get started**.
 2. **Sign-in method:**
-   - Enable **Google**. This is the only administrator sign-in provider. Do not enable Email/Password or Email link for the admin portal.
+   - Enable **Email/Password**. This is the administrator sign-in provider. Do not enable Email link for the admin portal.
    - Enable **Phone**. This is for student OTP.
 3. **Authorized domains** (Settings → Authorized domains): add the website domains, e.g. `college.com` and `www.college.com`. Phone sign-in only works on these domains.
 4. **SMS region policy** (Settings → SMS region policy): choose **Allow** and select **India** only. This blocks SMS fraud to foreign numbers.
@@ -28,8 +28,8 @@ After the backend is deployed ([Deployment](07-deployment.md)), run:
 ./scripts/run-cli.sh production grant-existing-admin --email admin@college.com --name "College Admin"
 ```
 
-Before running it, ensure the intended administrator has already completed Google
-Sign-In in Firebase Authentication and that their Google email is verified. The
+Before running it, ensure the intended administrator has an existing Firebase
+Email/Password account and that their email is verified. The
 command then does only this:
 
 - Reads the existing Firebase account and requires its email to already be verified.
@@ -39,8 +39,8 @@ It never creates, verifies, resets, disables, or otherwise changes a Firebase us
 
 Then:
 
-1. The administrator signs in with Google. The application has no password form or public password-reset flow.
-2. Sign in to the admin portal with that registered Google account.
+1. The administrator signs in with their Firebase Email/Password credentials. The application has no public password-reset flow.
+2. Sign in to the admin portal with that registered email address.
 
 There is no normal deactivation, replacement, or password-reset command: this
 is a one-admin system. Handle a lost-account incident through an approved

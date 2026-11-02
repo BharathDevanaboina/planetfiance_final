@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, configure_mappers
 
 import app.models  # noqa: F401
 from app import cli
-from app.core.error import Forbidden
+from app.core.error import Forbidden, Unauthorized
 from app.core.identity import AdminIdentity, FakeIdentityVerifier
 from app.core.models import Base
 from app.modules.admin_auth import service as admin_service
@@ -61,24 +61,24 @@ def test_second_admin_registration_is_refused_by_service_and_database() -> None:
         db.rollback()
 
 
-def test_admin_authorization_rejects_non_google_firebase_tokens() -> None:
-    class PasswordVerifier:
+def test_admin_authorization_rejects_non_email_password_firebase_tokens() -> None:
+    class GoogleVerifier:
         def verify_admin_token(self, _: str) -> AdminIdentity:
             return AdminIdentity(
                 uid="verified-firebase-uid",
                 email="admin@example.com",
                 email_verified=True,
-                sign_in_provider="password",
+                sign_in_provider="google.com",
                 mfa_verified=False,
             )
 
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
-    with Session(engine) as db, pytest.raises(Forbidden, match="Google Sign-In"):
-        require_admin("Bearer test-token", db, PasswordVerifier())
+    with Session(engine) as db, pytest.raises(Forbidden, match="Email/Password"):
+        require_admin("Bearer test-token", db, GoogleVerifier())
 
 
-def test_only_the_registered_google_identity_is_authorized() -> None:
+def test_only_the_registered_email_password_identity_is_authorized() -> None:
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
     verifier = FakeIdentityVerifier()
@@ -89,6 +89,13 @@ def test_only_the_registered_google_identity_is_authorized() -> None:
 
         with pytest.raises(Forbidden, match="does not have admin access"):
             require_admin("Bearer fake-admin:other@example.com", db, verifier)
+
+
+def test_admin_api_rejects_requests_without_a_bearer_token() -> None:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db, pytest.raises(Unauthorized, match="Missing admin sign-in"):
+        require_admin(None, db, FakeIdentityVerifier())
 
 
 def test_cli_exposes_only_the_one_time_admin_registration_command(capsys: pytest.CaptureFixture[str]) -> None:

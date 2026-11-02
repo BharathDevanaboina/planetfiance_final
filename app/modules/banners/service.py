@@ -116,7 +116,7 @@ def replace_image(
 
     db.commit()
     db.refresh(banner)
-    delete_files(storage, old_files)
+    delete_files(storage, *old_files)
     return to_out(banner)
 
 
@@ -125,4 +125,4 @@ def delete_banner(db: Session, storage: FileStorage, banner_id: uuid.UUID) -> No
     paths = (banner.image_path, banner.thumb_path)
     db.delete(banner)
     db.commit()
-    delete_files(storage, paths)
+    delete_files(storage, *paths)

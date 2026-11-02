@@ -12,7 +12,7 @@ There are three access levels:
 |---|---|---|
 | Public website | No sign-in for read-only content | `GET /api/v1/public/site`, registration choices and exam availability |
 | Student | Firebase Phone Auth token + Firebase App Check | Brochure download and exam start after a fresh OTP |
-| Administrator | Verified Firebase Google ID token and an active database allow-list entry | Every `/api/v1/admin/**` endpoint |
+| Administrator | Verified Firebase Email/Password ID token and an active database allow-list entry | Every `/api/v1/admin/**` endpoint |
 | Cloud Scheduler | Google OIDC token from an allowed service account | `/internal/lead-sync/flush` only |
 
 The backend does **not** accept a Firebase API key as authorization. The web
@@ -28,7 +28,7 @@ An operator registers the one existing, verified Firebase account exactly once w
 ./scripts/run-cli.sh production grant-existing-admin --email person@example.com --name "Person Name"
 ```
 
-Firebase Authentication provides Google Sign-In. The database contains only the
+Firebase Authentication provides Email/Password sign-in. The database contains only the
 single Firebase UID/email allow-list record, display name, active state and
 last-login time. A database singleton constraint prevents a second record;
 there is no administrator-creation endpoint, dashboard control, or public
@@ -50,7 +50,7 @@ password-reset flow.
 | Mock exam | Download template, validate, upload and delete one of three question sets | `/admin/exam` | `exam_sets`, `exam_passages`, `exam_questions`, `exam_options` |
 | Lead delivery | Google Sheets retry dashboard unavailable pending `pending_sheet_rows` | — | Exam registrations write directly to Google Sheets |
 
-All admin routes require the same Firebase Google-provider/verified-email/UID allow-list check.
+All admin routes require the same Firebase Email/Password-provider/verified-email/UID allow-list check.
 There is exactly one administrator and no role hierarchy.
 
 ## API inventory

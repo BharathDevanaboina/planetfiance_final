@@ -168,7 +168,7 @@ class FakeIdentityVerifier:
             uid=f"uid-{email}",
             email=email,
             email_verified=True,
-            sign_in_provider="google.com",
+            sign_in_provider="password",
             mfa_verified="mfa" in parts[2:],
         )
 

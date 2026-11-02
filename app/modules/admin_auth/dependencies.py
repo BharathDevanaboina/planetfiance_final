@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from fastapi import Depends, Header
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.dependencies import get_identity_verifier
 from app.core.error import Forbidden, Unauthorized
@@ -26,12 +27,22 @@ def require_admin(
     db: Session = Depends(get_db),
     verifier: IdentityVerifier = Depends(get_identity_verifier),
 ) -> AdminPrincipal:
+    if get_settings().local_dashboard_mode:
+        return AdminPrincipal(
+            admin_id="local-dashboard-admin",
+            email="local-admin@example.com",
+            firebase_uid="local-dashboard-admin",
+        )
+
     if not authorization or not authorization.startswith("Bearer "):
         raise Unauthorized("Missing admin sign-in.")
 
     identity = verifier.verify_admin_token(authorization.removeprefix("Bearer ").strip())
-    if identity.sign_in_provider != "google.com":
-        raise Forbidden("Administrator access requires Google Sign-In.", code="GOOGLE_SIGN_IN_REQUIRED")
+    if identity.sign_in_provider != "password":
+        raise Forbidden(
+            "Administrator access requires Firebase Email/Password sign-in.",
+            code="EMAIL_PASSWORD_SIGN_IN_REQUIRED",
+        )
     if not identity.email or not identity.email_verified:
         raise Forbidden("Your email address is not verified.", code="EMAIL_NOT_VERIFIED")
     admin = service.get_active_admin(db, identity.uid, identity.email)

@@ -15,6 +15,11 @@ from app.core.database import get_session_factory
 
 
 def _db():
+    settings = get_settings()
+    if settings.local_dashboard_mode or settings.local_firebase_auth_test_mode:
+        from app.core.local_development import initialize_local_dashboard
+
+        initialize_local_dashboard(settings, include_local_admin=settings.local_dashboard_mode)
     return get_session_factory()()
 
 
@@ -35,8 +40,8 @@ def cmd_grant_existing_admin(args: argparse.Namespace) -> int:
     firebase_user = auth.get_user_by_email(args.email)
     if not firebase_user.email_verified:
         raise ValueError("The Firebase account email must be verified before admin access is granted.")
-    if not any(provider.provider_id == "google.com" for provider in firebase_user.provider_data):
-        raise ValueError("The Firebase account must be an existing Google Sign-In account.")
+    if not any(provider.provider_id == "password" for provider in firebase_user.provider_data):
+        raise ValueError("The Firebase account must be an existing Email/Password account.")
     with _db() as db:
         admin = service.initialize_admin(
             db,

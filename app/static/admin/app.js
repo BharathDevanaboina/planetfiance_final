@@ -1,15 +1,14 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {
   getAuth,
   onAuthStateChanged,
-  GoogleAuthProvider,
-  signInWithPopup,
+  signInWithEmailAndPassword,
   signOut,
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
 const root = document.querySelector("#app");
 const toastRegion = document.querySelector("#toast-region");
-const state = { auth: null, user: null, page: "dashboard", cache: {}, visualPreview: false };
+const state = { auth: null, user: null, page: "dashboard", cache: {}, visualPreview: false, localDevelopment: false };
 const nav = [
   ["dashboard", "◫", "Overview"], ["settings", "⚙", "Contact & settings"],
   ["courses", "◈", "Courses & fees"], ["batches", "◷", "Batches"],
@@ -23,6 +22,7 @@ const nav = [
 // Firebase, sends an API request, or changes the real sign-in flow.
 const localVisualPreview = ["127.0.0.1", "localhost", "::1"].includes(window.location.hostname)
   && new URLSearchParams(window.location.search).get("preview") === "1";
+const localDashboardMode = window.__LOCAL_DASHBOARD_MODE__ === true;
 const previewImage = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='260' viewBox='0 0 640 260'%3E%3Crect width='640' height='260' fill='%23154432'/%3E%3Ccircle cx='540' cy='45' r='120' fill='%2327a77a' opacity='.35'/%3E%3Ctext x='42' y='128' fill='white' font-family='Arial' font-size='36' font-weight='700'%3EPlanetFiance%3C/text%3E%3Ctext x='42' y='168' fill='%23cfeadf' font-family='Arial' font-size='20'%3EAdmissions open%3C/text%3E%3C/svg%3E";
 const previewData = {
   settings: { phone: "+91 98765 43210", whatsapp: "+91 98765 43210", email: "admissions@planetfiance.example", google_form_url: "https://forms.google.com/", address: "PlanetFiance College, Hyderabad", social_links: { facebook: "https://facebook.com/", instagram: "https://instagram.com/", youtube: "https://youtube.com/", linkedin: "https://linkedin.com/", x: "" } },
@@ -76,14 +76,20 @@ function notice(message, error = false) {
 
 function problem(error) {
   const detail = error?.detail || error?.message || "Something went wrong. Please try again.";
-  notice(detail, true);
+  const issues = error?.errors || error?.report?.errors || [];
+  const summary = Array.isArray(issues) && issues.length
+    ? ` ${issues.slice(0, 2).map((issue) => issue.message || issue.detail || String(issue)).join(" ")}`
+    : "";
+  notice(`${detail}${summary}`, true);
 }
 
 function loginProblem(error) {
   const messages = {
-    "auth/configuration-not-found": "Firebase Google Sign-In is not configured for this project. Enable Google in Firebase Console → Authentication → Sign-in method.",
-    "auth/popup-closed-by-user": "Google Sign-In was cancelled.",
-    "auth/unauthorized-domain": "This domain is not authorised for Google Sign-In in Firebase.",
+    "auth/configuration-not-found": "Firebase Email/Password sign-in is not configured for this project. Enable Email/Password in Firebase Authentication.",
+    "auth/invalid-credential": "The email address or password is incorrect.",
+    "auth/wrong-password": "The email address or password is incorrect.",
+    "auth/user-not-found": "The email address or password is incorrect.",
+    "auth/invalid-email": "Enter a valid email address.",
     "auth/user-disabled": "This Firebase account has been disabled.",
     "auth/too-many-requests": "Too many sign-in attempts. Please wait a moment and try again.",
   };
@@ -97,7 +103,7 @@ async function token() {
 
 async function api(path, { method = "GET", body, form = false } = {}) {
   if (state.visualPreview) return previewApi(path, { method, body, form });
-  const headers = { Authorization: `Bearer ${await token()}` };
+  const headers = state.localDevelopment ? {} : { Authorization: `Bearer ${await token()}` };
   if (body && !form) headers["Content-Type"] = "application/json";
   const response = await fetch(`/api/v1${path}`, { method, headers, body: body ? (form ? body : JSON.stringify(body)) : undefined });
   if (!response.ok) {
@@ -135,10 +141,15 @@ function confirmAction(title, message, actionLabel = "Delete") {
   });
 }
 
-function loginScreen(message = "Sign in with the one authorized Google account.") {
-  root.innerHTML = `<main class="auth-shell"><section class="auth-card"><div class="brand-mark">C</div><h1>College Control</h1><p>${escapeHtml(message)}</p><button class="button" id="google-sign-in" type="button">Continue with Google</button><p class="eyebrow" style="margin-top:16px">Only the registered Google account can access this dashboard.</p></section></main>`;
-  root.querySelector("#google-sign-in").onclick = async () => {
-    try { await signInWithPopup(state.auth, new GoogleAuthProvider()); }
+function loginScreen(message = "Sign in with the authorized administrator email and password.") {
+  root.innerHTML = `<main class="auth-shell"><section class="auth-card"><div class="brand-mark">C</div><h1>College Control</h1><p>${escapeHtml(message)}</p><form id="login-form"><div class="field"><label>Email address</label><input required type="email" name="email" autocomplete="email" /></div><div class="field"><label>Password</label><input required type="password" name="password" autocomplete="current-password" /></div><button class="button" type="submit">Sign in securely</button></form><p class="eyebrow" style="margin-top:16px">Firebase verifies your password. The dashboard also checks your authorized administrator record.</p></section></main>`;
+  root.querySelector("#login-form").onsubmit = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      const userCredential = await signInWithEmailAndPassword(state.auth, form.get("email"), form.get("password"));
+      await userCredential.user.getIdToken();
+    }
     catch (error) { loginProblem(error); }
   };
 }
@@ -146,9 +157,17 @@ function loginScreen(message = "Sign in with the one authorized Google account."
 function shell() {
   const initial = (state.user?.email || "A").slice(0, 1).toUpperCase();
   const previewBadge = state.visualPreview ? `<span class="status warning">Local visual preview</span>` : "";
-  root.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="brand-mark">C</span><span>College Admin</span></div><nav>${nav.map(([id, icon, label]) => `<button class="nav-item ${state.page === id ? "active" : ""}" data-page="${id}"><span class="nav-icon">${icon}</span><span>${label}</span></button>`).join("")}</nav><p class="sidebar-footer">${state.visualPreview ? "Sample data only. Nothing can be saved from this local preview." : "Securely connected to the existing FastAPI administration APIs."}</p></aside><main class="main"><header class="topbar"><div><strong>Administration</strong><div class="eyebrow">Content, admissions and student services</div></div><div class="user-menu">${previewBadge}<span class="user-email">${escapeHtml(state.user?.email || "")}</span><span class="avatar">${initial}</span><button class="text-button" id="sign-out">${state.visualPreview ? "Exit preview" : "Sign out"}</button></div></header><section id="page" class="page"><div class="loading"><div class="spinner"></div></div></section></main></div>`;
+  const localBadge = state.localDevelopment ? `<span class="status warning">Local development</span>` : "";
+  const footer = state.visualPreview
+    ? "Sample data only. Nothing can be saved from this local preview."
+    : state.localDevelopment
+      ? "Local SQLite database and local file storage. Changes persist only on this computer."
+      : "Securely connected to the existing FastAPI administration APIs.";
+  root.innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="brand-mark">C</span><span>College Admin</span></div><nav>${nav.map(([id, icon, label]) => `<button class="nav-item ${state.page === id ? "active" : ""}" data-page="${id}"><span class="nav-icon">${icon}</span><span>${label}</span></button>`).join("")}</nav><p class="sidebar-footer">${footer}</p></aside><main class="main"><header class="topbar"><div><strong>Administration</strong><div class="eyebrow">Content, admissions and student services</div></div><div class="user-menu">${previewBadge}${localBadge}<span class="user-email">${escapeHtml(state.user?.email || "")}</span><span class="avatar">${initial}</span><button class="text-button" id="sign-out">${state.visualPreview ? "Exit preview" : state.localDevelopment ? "Restart local mode" : "Sign out"}</button></div></header><section id="page" class="page"><div class="loading"><div class="spinner"></div></div></section></main></div>`;
   root.querySelectorAll("[data-page]").forEach((button) => button.onclick = () => { state.page = button.dataset.page; shell(); renderPage(); });
-  root.querySelector("#sign-out").onclick = () => state.visualPreview ? window.location.assign("/admin/") : signOut(state.auth);
+  root.querySelector("#sign-out").onclick = () => state.visualPreview
+    ? window.location.assign("/admin/")
+    : state.localDevelopment ? window.location.reload() : signOut(state.auth);
 }
 
 const title = (heading, copy, action = "") => `<div class="page-title"><div><h1>${heading}</h1><p>${copy}</p></div>${action}</div>`;
@@ -214,7 +233,7 @@ async function brochures(target) {
 }
 
 async function banners(target) {
-  const [items, courses] = await Promise.all([api("/admin/banners"), api("/admin/courses")]);
+  const [items, courses] = await Promise.all([api("/admin/banners/"), api("/admin/courses")]);
   target.innerHTML = `${title("Banners", "Control the website hero slider and optional brochure call-to-actions.", `<button class="button" id="add-banner">+ Add banner</button>`)}<div class="toolbar"><input class="search" placeholder="Search banners" data-filter /></div>${panel("Website banners", table(["Image", "Title", "Brochure button", "Order", "Status", ""], items.map((item) => `<tr data-search="${escapeHtml(item.title)}"><td><img class="preview" src="${escapeHtml(item.thumb_url)}" alt="" /></td><td><strong>${escapeHtml(item.title)}</strong></td><td>${item.course_code || "—"}</td><td>${item.display_order}</td><td>${status(item.is_active)}</td><td><button class="button secondary small" data-edit-banner="${item.id}">Edit</button> <button class="button secondary small" data-image-banner="${item.id}">Image</button> <button class="button danger small" data-delete-banner="${item.id}">Delete</button></td></tr>`).join("")))}`;
   filterTable(target); target.querySelector("#add-banner").onclick = () => bannerModal(null, courses); target.querySelectorAll("[data-edit-banner]").forEach((button) => button.onclick = () => bannerModal(items.find((x) => x.id === button.dataset.editBanner), courses)); target.querySelectorAll("[data-image-banner]").forEach((button) => button.onclick = () => imageReplaceModal("banner", button.dataset.imageBanner)); target.querySelectorAll("[data-delete-banner]").forEach((button) => button.onclick = async () => { if (await confirmAction("Delete banner", "The banner image will be removed from storage and the website.")) { try { await api(`/admin/banners/${button.dataset.deleteBanner}`, { method: "DELETE" }); notice("Banner deleted."); renderPage(); } catch (error) { problem(error); } } });
 }
@@ -252,7 +271,8 @@ function videoModal(item) {
 
 async function exam(target) {
   const sets = await api("/admin/exam/sets");
-  target.innerHTML = `${title("Mock exam", "Validate, preview and manage the three existing question-set slots.", `<a class="button secondary" href="/api/v1/admin/exam/template">Download Excel template</a>`)}${panel("Question sets", `<div class="grid cards">${sets.map((item) => `<article class="card metric"><small>Set ${item.slot}</small><strong>${item.exam_set ? item.exam_set.question_count : 0}</strong><p>${item.exam_set ? escapeHtml(item.exam_set.name) : "No file uploaded"}</p><div class="actions"><button class="button secondary small" data-exam-upload="${item.slot}">${item.exam_set ? "Replace" : "Upload"}</button>${item.exam_set ? `<button class="button danger small" data-exam-delete="${item.slot}">Remove</button>` : ""}</div></article>`).join("")}</div>`)}`;
+  target.innerHTML = `${title("Mock exam", "Validate, preview and manage the three existing question-set slots.", `<button class="button secondary" id="download-exam-template">Download Excel template</button>`)}${panel("Question sets", `<div class="grid cards">${sets.map((item) => `<article class="card metric"><small>Set ${item.slot}</small><strong>${item.exam_set ? item.exam_set.question_count : 0}</strong><p>${item.exam_set ? escapeHtml(item.exam_set.name) : "No file uploaded"}</p><div class="actions"><button class="button secondary small" data-exam-upload="${item.slot}">${item.exam_set ? "Replace" : "Upload"}</button>${item.exam_set ? `<button class="button danger small" data-exam-delete="${item.slot}">Remove</button>` : ""}</div></article>`).join("")}</div>`)}`;
+  target.querySelector("#download-exam-template").onclick = () => secureFile("/admin/exam/template", "exam-question-set-template.xlsx");
   target.querySelectorAll("[data-exam-upload]").forEach((button) => button.onclick = () => examUploadModal(Number(button.dataset.examUpload), sets.find((x) => x.slot === Number(button.dataset.examUpload)))); target.querySelectorAll("[data-exam-delete]").forEach((button) => button.onclick = () => deleteExamSet(Number(button.dataset.examDelete)));
 }
 
@@ -271,7 +291,7 @@ function examUploadModal(slot, existing) {
       el.querySelector("#validation-report").innerHTML = `<div class="detail-list" style="margin-top:14px"><div><span>Questions found</span><strong>${report.question_count}</strong></div><div><span>Passages found</span><strong>${report.passage_count}</strong></div><div><span>Validation</span>${report.ok ? status(true, "Ready to import") : `<span class="status warning">Fix issues first</span>`}</div></div>${issues.length ? `<ul>${issues.slice(0, 12).map((issue) => `<li>${escapeHtml(`${issue.sheet}${issue.row ? ` row ${issue.row}` : ""}: ${issue.message}`)}</li>`).join("")}</ul>` : ""}${questionPreview}`;
     } catch (error) { problem(error); }
   };
-  el.querySelector("#exam-form").onsubmit = async (event) => { event.preventDefault(); if (!validated) return notice("Validate the file successfully before importing.", true); const f = new FormData(event.currentTarget); try { if (existing?.exam_set && !(await confirmAction("Replace question set", "The current set will be deleted before this validated file is imported. Active student attempts using it will expire.", "Replace"))) return; if (existing?.exam_set) await api(`/admin/exam/sets/${slot}`, { method: "DELETE" }); await api(`/admin/exam/sets/${slot}`, { method: "POST", body: f, form: true }); el.remove(); notice("Question set imported."); renderPage(); } catch (error) { problem(error); } };
+  el.querySelector("#exam-form").onsubmit = async (event) => { event.preventDefault(); if (!validated) return notice("Validate the file successfully before importing.", true); const f = new FormData(event.currentTarget); try { if (existing?.exam_set && !(await confirmAction("Replace question set", "The new file is validated before replacing the current set. If it cannot be saved, the current set remains available.", "Replace"))) return; await api(`/admin/exam/sets/${slot}`, { method: existing?.exam_set ? "PUT" : "POST", body: f, form: true }); el.remove(); notice(existing?.exam_set ? "Question set replaced." : "Question set imported."); renderPage(); } catch (error) { problem(error); } };
 }
 
 async function deleteExamSet(slot) { if (await confirmAction("Remove question set", "Students will not be assigned this set after it is removed.")) { try { await api(`/admin/exam/sets/${slot}`, { method: "DELETE" }); notice("Question set removed."); renderPage(); } catch (error) { problem(error); } } }
@@ -298,6 +318,13 @@ root.addEventListener("click", (event) => {
 });
 
 async function boot() {
+  if (localDashboardMode) {
+    state.localDevelopment = true;
+    state.user = { email: "local-admin@example.com" };
+    shell();
+    renderPage();
+    return;
+  }
   if (localVisualPreview) {
     state.visualPreview = true;
     state.user = { email: "local-preview@planetfiance.invalid" };
@@ -307,7 +334,8 @@ async function boot() {
   }
   const config = window.__FIREBASE_CONFIG__;
   if (!config?.apiKey || !config?.authDomain || !config?.appId) { loginScreen("Firebase web configuration is missing. Set FIREBASE_WEB_* values for this environment before signing in."); return; }
-  state.auth = getAuth(initializeApp(config));
+  const firebaseApp = getApps().length ? getApp() : initializeApp(config);
+  state.auth = getAuth(firebaseApp);
   onAuthStateChanged(state.auth, async (user) => {
     state.user = user;
     if (!user) { loginScreen(); return; }

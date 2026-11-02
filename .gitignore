@@ -5,6 +5,7 @@ venv/
 .env
 .env.*
 !.env.example
+config/local-firebase-auth-test.env
 var/
 .pytest_cache/
 .ruff_cache/

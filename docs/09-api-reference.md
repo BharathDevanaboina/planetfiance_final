@@ -342,24 +342,22 @@ Use `review` with the saved paper to show each question with the student's choic
 | `GET /exam/template` | Download the Excel template |
 | `POST /exam/sets/validate` (multipart `file`) | Check a file without saving it. Returns counts, errors and warnings |
 | `POST /exam/sets/{slot}` (multipart `file`, `name`?) | Upload into an empty slot (1–3). On problems: 422 with `report.errors` (row numbers) |
+| `PUT /exam/sets/{slot}` (multipart `file`, `name`?) | Atomically replace a populated slot; a failed replacement preserves the current set |
 | `DELETE /exam/sets/{slot}` | Empty a slot |
 | Lead retry dashboard | Unavailable until the approved `pending_sheet_rows` schema exists |
 
 **Images:** JPEG, PNG or WebP, up to 10 MB, are converted to WebP in two sizes: `image_url` (max 1920 px wide) and `thumb_url` (max 600 px).
 
-## Admin Google Sign-In (frontend outline)
+## Admin Email/Password sign-in (frontend outline)
 
 ```js
-import {
-  getAuth,
-  GoogleAuthProvider,
-  signInWithPopup
-} from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 
-await signInWithPopup(auth, new GoogleAuthProvider());
+const credential = await signInWithEmailAndPassword(auth, email, password);
+const idToken = await credential.user.getIdToken();
 ```
 
-The backend accepts the Firebase ID token only when its provider is `google.com`,
+The backend accepts the Firebase ID token only when its provider is `password`,
 the email is verified, and its UID/email match the one active `admin_users` row.
 
 ## Limits

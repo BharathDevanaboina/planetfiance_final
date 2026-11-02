@@ -41,9 +41,9 @@ def test_admin_spa_and_public_firebase_config_are_served(tmp_path: Path) -> None
 
     app_script = client.get("/admin/app.js")
     assert app_script.status_code == 200
-    assert "signInWithPopup" in app_script.text
-    assert "GoogleAuthProvider" in app_script.text
-    assert "signInWithEmailAndPassword" not in app_script.text
+    assert "signInWithEmailAndPassword" in app_script.text
+    assert "signInWithPopup" not in app_script.text
+    assert "GoogleAuthProvider" not in app_script.text
     assert "TotpMultiFactorGenerator" not in app_script.text
     assert "auth/configuration-not-found" in app_script.text
 

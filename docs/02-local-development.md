@@ -63,6 +63,32 @@ curl -X POST localhost:8000/api/v1/exam/start -H "Content-Type: application/json
   -d '{"name":"Ravi Kumar","mobile":"9876543210","firebase_id_token":"fake-phone:+919876543210"}'
 ```
 
+## Real Firebase Email/Password test (separate local mode)
+
+This optional mode uses the existing Firebase web app and Admin SDK only for a
+local browser test. It uses a separate SQLite database and local storage; it
+does not use Cloud SQL or production data.
+
+1. Copy `config/local-firebase-auth-test.env.example` to
+   `config/local-firebase-auth-test.env`. This ignored file must contain the
+   existing Firebase web configuration and an absolute path to an existing
+   local Admin SDK credential. Keep the credential file outside this repository.
+2. Register the existing verified Email/Password account into the separate
+   local SQLite allow-list only:
+
+   ```powershell
+   .\scripts\start-local-firebase-auth-test.ps1 -RegisterAdmin -AdminEmail person@example.com
+   ```
+
+3. Run the browser test server and open `http://127.0.0.1:8006/admin/`:
+
+   ```powershell
+   .\scripts\start-local-firebase-auth-test.ps1
+   ```
+
+The Firebase account must already exist, use the Email/Password provider, and
+have a verified email. The script never creates or changes Firebase users.
+
 ## Using the real Google Sheet from your computer (optional)
 
 1. `gcloud auth application-default login --scopes=https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/spreadsheets`
